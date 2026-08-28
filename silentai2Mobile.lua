@@ -1,17 +1,21 @@
 -- Services
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
--- Universal Request Handler
+-- HTTP Request Handler (Mobile & PC Compatibility)
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
 
--- Cleanup Previous Instances
-if PlayerGui:FindFirstChild("SilentAIBotGui") then
-    PlayerGui.SilentAIBotGui:Destroy()
+-- Load Rayfield Safely
+local RayfieldSuccess, Rayfield = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if not RayfieldSuccess or not Rayfield then
+    warn("Failed to load Rayfield UI Library!")
+    return
 end
 
 -- Config & State
@@ -26,88 +30,73 @@ local lastActiveTime = 0
 local targetFollowPlayer = nil
 local followConnection = nil
 
-local SystemPrompt = "You are a cute anime bot named Silent. Respond quickly in short sentences under 12 words."
+local currentMode = "OwO Mode"
+local SystemPrompts = {
+    ["OwO Mode"] = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies under 12 words.",
+    ["Tsundere Mode"] = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies under 12 words.",
+    ["Yandere Mode"] = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies under 12 words."
+}
 
--- === INTERFACE SETUP ===
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SilentAIBotGui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 999999
-ScreenGui.Parent = PlayerGui
+-- === RAYFIELD INTERFACE ===
+local Window = Rayfield:CreateWindow({
+   Name = "🌸 Silent AI & Navigation",
+   LoadingTitle = "Silent AI Loading...",
+   LoadingSubtitle = "Rayfield Cross-Platform Edition",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
 
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
-ToggleBtn.Position = UDim2.new(0, 10, 0.3, 0)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(35, 30, 45)
-ToggleBtn.Text = "🌸"
-ToggleBtn.TextSize = 22
-ToggleBtn.Active = true
-ToggleBtn.Parent = ScreenGui
+local MainTab = Window:CreateTab("Control Hub", 4483362458)
 
-local BtnCorner = Instance.new("UICorner")
-BtnCorner.CornerRadius = UDim.new(1, 0)
-BtnCorner.Parent = ToggleBtn
+local StatusParagraph = MainTab:CreateParagraph({
+    Title = "Bot Status", 
+    Content = "Active | Listening for 'silent' or 'hey silent'"
+})
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 220, 0, 160)
-MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 20, 32)
-MainFrame.Visible = false
-MainFrame.Parent = ScreenGui
+MainTab:CreateToggle({
+   Name = "Enable Silent AI",
+   CurrentValue = true,
+   Callback = function(Value)
+      botEnabled = Value
+      StatusParagraph:Set({
+          Title = "Bot Status", 
+          Content = botEnabled and "Active | Listening..." or "Inactive"
+      })
+   end,
+})
 
-local FrameCorner = Instance.new("UICorner")
-FrameCorner.CornerRadius = UDim.new(0, 10)
-FrameCorner.Parent = MainFrame
+MainTab:CreateToggle({
+   Name = "Continuous Talk Mode",
+   CurrentValue = true,
+   Callback = function(Value)
+      continuousTalk = Value
+      if not Value then lastActiveUser = nil end
+   end,
+})
 
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0.9, 0, 0.35, 0)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.05, 0)
-StatusLabel.Text = "Status: ACTIVE\nListening: 'silent' / 'hey silent'"
-StatusLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Font = Enum.Font.GothamBold
-StatusLabel.TextSize = 12
-StatusLabel.TextWrapped = true
-StatusLabel.Parent = MainFrame
+MainTab:CreateDropdown({
+   Name = "Personality Mode",
+   Options = {"OwO Mode", "Tsundere Mode", "Yandere Mode"},
+   CurrentOption = {"OwO Mode"},
+   MultipleOptions = false,
+   Callback = function(Option)
+      currentMode = Option[1]
+   end,
+})
 
-local BotToggleBtn = Instance.new("TextButton")
-BotToggleBtn.Size = UDim2.new(0.9, 0, 0.25, 0)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.42, 0)
-BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 180, 90)
-BotToggleBtn.Text = "BOT: ON"
-BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-BotToggleBtn.Font = Enum.Font.GothamBold
-BotToggleBtn.TextSize = 12
-BotToggleBtn.Parent = MainFrame
+MainTab:CreateButton({
+   Name = "Stop Following",
+   Callback = function()
+      targetFollowPlayer = nil
+      if followConnection then
+          followConnection:Disconnect()
+          followConnection = nil
+      end
+      StatusParagraph:Set({Title = "Navigation", Content = "Stopped following player."})
+   end,
+})
 
-local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0.25, 0)
-StopFollowBtn.Position = UDim2.new(0.05, 0, 0.70, 0)
-StopFollowBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
-StopFollowBtn.Text = "Stop Following"
-StopFollowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-StopFollowBtn.Font = Enum.Font.GothamBold
-StopFollowBtn.TextSize = 12
-StopFollowBtn.Parent = MainFrame
-
-ToggleBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
-
-BotToggleBtn.MouseButton1Click:Connect(function()
-    botEnabled = not botEnabled
-    if botEnabled then
-        BotToggleBtn.Text = "BOT: ON"
-        BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 180, 90)
-        StatusLabel.Text = "Status: ACTIVE\nListening: 'silent'"
-    else
-        BotToggleBtn.Text = "BOT: OFF"
-        BotToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-        StatusLabel.Text = "Status: INACTIVE"
-    end
-end)
-
--- === CHAT ENGINE ===
+-- === CHAT SENDER ===
 local function sendMessage(msg)
     if not msg or msg == "" then return end
     pcall(function()
@@ -121,7 +110,7 @@ local function sendMessage(msg)
     end)
 end
 
--- === SAFE OPENROUTER QUERY (NIL SAFEGUARD INTEGRATED) ===
+-- === SAFE API QUERY (NIL SAFEGUARD INTEGRATED) ===
 local function queryAI(promptText, senderName)
     if not request then return "Executor missing request function!" end
 
@@ -129,7 +118,7 @@ local function queryAI(promptText, senderName)
         model = "openrouter/free",
         max_tokens = 40,
         messages = {
-            { role = "system", content = SystemPrompt },
+            { role = "system", content = SystemPrompts[currentMode] },
             { role = "user", content = senderName .. ": " .. promptText }
         }
     })
@@ -150,7 +139,6 @@ local function queryAI(promptText, senderName)
         local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
-            -- Safeguard against string formatting errors on nil or empty responses
             if type(rawContent) == "string" and rawContent ~= "" then
                 return rawContent:gsub('^"', ''):gsub('"$', '')
             end
@@ -160,7 +148,7 @@ local function queryAI(promptText, senderName)
     return "B-Baka! AI timed out... ♡"
 end
 
--- === NAVIGATION CONTROLLER ===
+-- === STABLE DIRECT NAVIGATION (MOBILE & PC) ===
 local function startFollowing(player)
     targetFollowPlayer = player
     if followConnection then followConnection:Disconnect() end
@@ -189,12 +177,7 @@ local function stopFollowing()
     end
 end
 
-StopFollowBtn.MouseButton1Click:Connect(function()
-    stopFollowing()
-    sendMessage("Stopped following! ♡")
-end)
-
--- === MESSAGE PROCESSING & DISPATCH ===
+-- === MESSAGE PROCESSOR ===
 local function processIncomingMessage(player, messageText)
     if not botEnabled or isProcessing then return end
     if player == LocalPlayer then return end
@@ -208,7 +191,7 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- Baritone-style Navigation Commands
+        -- Navigation commands
         if lowerMsg:find("follow me") or lowerMsg:find("come here") or lowerMsg:find("follow") then
             sendMessage("Coming to you, " .. senderName .. "! ♡")
             startFollowing(player)
@@ -220,19 +203,19 @@ local function processIncomingMessage(player, messageText)
         end
 
         isProcessing = true
-        StatusLabel.Text = "Thinking..."
+        StatusParagraph:Set({Title = "Bot Status", Content = "Generating reply for " .. senderName .. "..."})
 
         task.spawn(function()
             local cleanPrompt = messageText:gsub("hey silent", ""):gsub("silent", "")
             local reply = queryAI(cleanPrompt, senderName)
             if reply then sendMessage(reply) end
-            StatusLabel.Text = "Status: ACTIVE\nListening: 'silent'"
+            StatusParagraph:Set({Title = "Bot Status", Content = "Active | Listening..."})
             isProcessing = false
         end)
     end
 end
 
--- === LISTENERS ===
+-- === CHAT HOOKS ===
 if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
     TextChatService.MessageReceived:Connect(function(textChatMessage)
         local sender = textChatMessage.TextSource
