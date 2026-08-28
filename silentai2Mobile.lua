@@ -1,126 +1,89 @@
--- Services & Engine Init
---miss lizz is a good girl according to her word
+-- Load Rayfield Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
+local PathfindingService = game:GetService("PathfindingService")
 
--- Unified HTTP Request Handler (Mobile High-UNC Compatibility)
+-- HTTP Request Handler
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
 
--- Cleanup Previous Instances
-if PlayerGui:FindFirstChild("SilentAIBotGui") then
-    PlayerGui.SilentAIBotGui:Destroy()
-end
-
--- Config & States
+-- State & Settings
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 local botEnabled = false
+local continuousTalk = false
 local isProcessing = false
-local currentMode = 1
-local PlayerMemory = {}
+local lastActiveUser = nil
+local lastActiveTime = 0
+local activeFollowThread = nil
+local targetFollowPlayer = nil
 
-local Themes = {
-    [1] = {
-        Name = "OwO Mode",
-        Primary = Color3.fromRGB(255, 145, 195),
-        Bg = Color3.fromRGB(32, 25, 36),
-        SystemPrompt = "You are an ultra-cute anime furry bot named Silent. Respond to the message in OwO style with stutters. Keep your response under 15 words so it fits in Roblox chat."
-    },
-    [2] = {
-        Name = "Tsundere Mode",
-        Primary = Color3.fromRGB(240, 60, 100),
-        Bg = Color3.fromRGB(36, 22, 28),
-        SystemPrompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep your response under 15 words so it fits in Roblox chat."
-    },
-    [3] = {
-        Name = "Yandere Mode",
-        Primary = Color3.fromRGB(160, 35, 75),
-        Bg = Color3.fromRGB(22, 18, 26),
-        SystemPrompt = "You are a dark, possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep your response under 15 words so it fits in Roblox chat."
-    }
+local currentMode = "OwO Mode"
+local SystemPrompts = {
+    ["OwO Mode"] = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies under 12 words.",
+    ["Tsundere Mode"] = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies under 12 words.",
+    ["Yandere Mode"] = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies under 12 words."
 }
 
--- Screen Interface
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SilentAIBotGui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 999999
-ScreenGui.Parent = PlayerGui
+-- UI Setup
+local Window = Rayfield:CreateWindow({
+   Name = "🌸 Silent AI & Navigation Engine",
+   LoadingTitle = "Initializing Systems...",
+   LoadingSubtitle = "Fast API + Pathfinding",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
 
-local MobileToggleBtn = Instance.new("TextButton")
-MobileToggleBtn.Name = "MobileToggle"
-MobileToggleBtn.Size = UDim2.new(0, 45, 0, 45)
-MobileToggleBtn.Position = UDim2.new(0, 15, 0.25, 0)
-MobileToggleBtn.BackgroundColor3 = Themes[1].Bg
-MobileToggleBtn.Text = "🌸"
-MobileToggleBtn.TextSize = 20
-MobileToggleBtn.Active = true
-MobileToggleBtn.Parent = ScreenGui
+local MainTab = Window:CreateTab("Control Hub", 4483362458)
 
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(1, 0)
-ToggleCorner.Parent = MobileToggleBtn
+local StatusParagraph = MainTab:CreateParagraph({
+    Title = "Bot Status", 
+    Content = "Inactive"
+})
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0.85, 0, 0.45, 0)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-MainFrame.BackgroundColor3 = Themes[1].Bg
-MainFrame.Visible = false
-MainFrame.Parent = ScreenGui
+MainTab:CreateToggle({
+   Name = "Enable Bot Engine",
+   CurrentValue = false,
+   Callback = function(Value)
+      botEnabled = Value
+      StatusParagraph:Set({Title = "Bot Status", Content = botEnabled and "Active & Listening..." or "Inactive"})
+   end,
+})
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
-MainCorner.Parent = MainFrame
+MainTab:CreateToggle({
+   Name = "Continuous Talk Mode",
+   CurrentValue = false,
+   Callback = function(Value)
+      continuousTalk = Value
+      if not Value then lastActiveUser = nil end
+   end,
+})
 
-MobileToggleBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
+MainTab:CreateDropdown({
+   Name = "Personality Mode",
+   Options = {"OwO Mode", "Tsundere Mode", "Yandere Mode"},
+   CurrentOption = {"OwO Mode"},
+   MultipleOptions = false,
+   Callback = function(Option)
+      currentMode = Option[1]
+   end,
+})
 
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0.9, 0, 0.2, 0)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.1, 0)
-StatusLabel.Text = "Status: Ready ('hey silent')"
-StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Font = Enum.Font.GothamBold
-StatusLabel.TextScaled = true
-StatusLabel.Parent = MainFrame
+MainTab:CreateButton({
+   Name = "Stop Following Target",
+   Callback = function()
+      targetFollowPlayer = nil
+      if activeFollowThread then task.cancel(activeFollowThread) end
+      StatusParagraph:Set({Title = "Navigation Status", Content = "Follow cancelled."})
+   end,
+})
 
-local BotToggleBtn = Instance.new("TextButton")
-BotToggleBtn.Size = UDim2.new(0.9, 0, 0.3, 0)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.55, 0)
-BotToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-BotToggleBtn.Text = "BOT: INACTIVE"
-BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-BotToggleBtn.Font = Enum.Font.GothamBold
-BotToggleBtn.TextScaled = true
-BotToggleBtn.Parent = MainFrame
-
-local BtnCorner = Instance.new("UICorner")
-BtnCorner.CornerRadius = UDim.new(0, 8)
-BtnCorner.Parent = BotToggleBtn
-
-BotToggleBtn.MouseButton1Click:Connect(function()
-    botEnabled = not botEnabled
-    if botEnabled then
-        BotToggleBtn.Text = "BOT: ACTIVE"
-        BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 180, 90)
-        StatusLabel.Text = "Status: Listening..."
-    else
-        BotToggleBtn.Text = "BOT: INACTIVE"
-        BotToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-        StatusLabel.Text = "Status: Off"
-    end
-end)
-
--- Modern Chat Sender Engine
+-- Fast Chat Dispatch
 local function sendMessage(msg)
     if not msg or msg == "" then return end
     pcall(function()
@@ -128,27 +91,24 @@ local function sendMessage(msg)
         if textChannel then
             textChannel:SendAsync(msg)
         else
-            -- Legacy Fallback
             local sayRemote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
-            if sayRemote then
-                sayRemote:FireServer(msg, "All")
-            end
+            if sayRemote then sayRemote:FireServer(msg, "All") end
         end
     end)
 end
 
--- AI Query Execution
-local function queryAI(promptText, senderName)
-    if not request then 
-        StatusLabel.Text = "Error: Executor missing 'request' API"
-        return nil 
-    end
+-- Optimized OpenRouter API Call
+local function queryAIFast(promptText, senderName)
+    if not request then return "Executor missing request API!" end
 
+    -- Compact payload with max_tokens cap to force rapid generation
     local payload = HttpService:JSONEncode({
         model = "openrouter/free",
+        max_tokens = 45,
+        temperature = 0.7,
         messages = {
-            { role = "system", content = Themes[currentMode].SystemPrompt },
-            { role = "user", content = "[" .. senderName .. "]: " .. promptText }
+            { role = "system", content = SystemPrompts[currentMode] },
+            { role = "user", content = senderName .. ": " .. promptText }
         }
     })
 
@@ -171,46 +131,106 @@ local function queryAI(promptText, senderName)
         end
     end
 
-    return "B-Baka! Connection issue... ♡"
+    return "B-Baka! Slow down network... ♡"
 end
 
--- Modern TextChatService Event Listener
-local function processIncomingMessage(senderName, messageText)
-    if not botEnabled or isProcessing then return end
-    if senderName == LocalPlayer.Name or senderName == LocalPlayer.DisplayName then return end
+-- Baritone-Style Pathfinding Follow Logic
+local function followPlayer(player)
+    targetFollowPlayer = player
+    if activeFollowThread then task.cancel(activeFollowThread) end
 
-    if messageText:lower():find("hey silent") then
+    activeFollowThread = task.spawn(function()
+        while targetFollowPlayer == player and task.wait(0.4) do
+            local myChar = LocalPlayer.Character
+            local targetChar = player.Character
+            if myChar and targetChar and myChar:FindFirstChild("HumanoidRootPart") and targetChar:FindFirstChild("HumanoidRootPart") then
+                local myHRP = myChar.HumanoidRootPart
+                local targetHRP = targetChar.HumanoidRootPart
+                local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+
+                if (myHRP.Position - targetHRP.Position).Magnitude > 8 then
+                    local path = PathfindingService:CreatePath({
+                        AgentRadius = 2,
+                        AgentHeight = 5,
+                        AgentCanJump = true
+                    })
+                    
+                    pcall(function()
+                        path:ComputeAsync(myHRP.Position, targetHRP.Position)
+                        local waypoints = path:GetWaypoints()
+                        
+                        for i = 2, math.min(#waypoints, 4) do
+                            if targetFollowPlayer ~= player then break end
+                            local wp = waypoints[i]
+                            if wp.Action == Enum.PathWayPointAction.Jump then
+                                humanoid.Jump = true
+                            end
+                            humanoid:MoveTo(wp.Position)
+                            humanoid.MoveToFinished:Wait()
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+end
+
+-- Main Message Processor
+local function processIncomingMessage(player, messageText)
+    if not botEnabled or isProcessing then return end
+    if player == LocalPlayer then return end
+
+    local lowerMsg = messageText:lower()
+    local senderName = player.DisplayName
+    local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
+    
+    -- Check Continuous Talk Timeout (30 Second Window)
+    local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 30)
+
+    if isTriggered or isContinuous then
+        lastActiveUser = player
+        lastActiveTime = tick()
+
+        -- Check for Baritone Follow Commands
+        if lowerMsg:find("follow me") or lowerMsg:find("come here") or lowerMsg:find("follow") then
+            sendMessage("Coming to you, " .. senderName .. "! ♡")
+            followPlayer(player)
+            return
+        elseif lowerMsg:find("stop follow") or lowerMsg:find("stop following") or lowerMsg:find("stay") then
+            targetFollowPlayer = nil
+            if activeFollowThread then task.cancel(activeFollowThread) end
+            sendMessage("Stopped following! ♡")
+            return
+        end
+
+        -- Handle Normal AI Response
         isProcessing = true
-        StatusLabel.Text = "Status: Generating..."
+        StatusParagraph:Set({Title = "Bot Status", Content = "Generating reply for " .. senderName .. "..."})
 
         task.spawn(function()
-            local reply = queryAI(messageText, senderName)
-            if reply then
-                sendMessage(reply)
-            end
-            StatusLabel.Text = "Status: Listening..."
+            local cleanPrompt = messageText:gsub("hey silent", ""):gsub("silent", "")
+            local reply = queryAIFast(cleanPrompt, senderName)
+            if reply then sendMessage(reply) end
+            StatusParagraph:Set({Title = "Bot Status", Content = "Active & Listening..."})
             isProcessing = false
         end)
     end
 end
 
--- Connect Modern Chat Listener
+-- Connect Modern & Legacy Chat Listeners
 if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
     TextChatService.MessageReceived:Connect(function(textChatMessage)
         local sender = textChatMessage.TextSource
         if sender then
             local player = Players:GetPlayerByUserId(sender.UserId)
-            if player then
-                processIncomingMessage(player.DisplayName, textChatMessage.Text)
-            end
+            if player then processIncomingMessage(player, textChatMessage.Text) end
         end
     end)
 else
-    -- Legacy Chat Fallback hook
     for _, p in ipairs(Players:GetPlayers()) do
-        p.Chatted:Connect(function(msg) processIncomingMessage(p.DisplayName, msg) end)
+        p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
     end
     Players.PlayerAdded:Connect(function(p)
-        p.Chatted:Connect(function(msg) processIncomingMessage(p.DisplayName, msg) end)
+        p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
     end)
 end
