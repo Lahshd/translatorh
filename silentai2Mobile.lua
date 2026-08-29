@@ -1,6 +1,4 @@
 -- === DELTA MOBILE SAFE INITIALIZATION ===
-print("--SILENTAI STARTING INITIALIZATION--")
-
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
@@ -32,7 +30,6 @@ local OPENROUTER_API_KEY = "sk-or-v1-f380ea532c7e0e9456210eb841110ce25ce0d8fec53
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 local botEnabled = true
-local debugMode = false
 local continuousTalk = true
 local isProcessing = false
 local lastActiveUser = nil
@@ -77,16 +74,6 @@ local function sendMessage(msg)
     end)
 end
 
--- === DEBUG LOGGER ===
-local function debugLog(txt)
-    print("--SILENTAI " .. txt .. "--")
-    if debugMode then
-        sendMessage("--SILENTAI " .. txt .. "--")
-    end
-end
-
-debugLog("SYSTEM READY")
-
 -- === PURE NATIVE GUI ENGINE ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
@@ -110,7 +97,7 @@ ToggleCorner.Parent = ToggleBtn
 
 -- Main Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 240, 0, 235)
+MainFrame.Size = UDim2.new(0, 240, 0, 200)
 MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
 MainFrame.Visible = true
@@ -126,7 +113,7 @@ MainCorner.Parent = MainFrame
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "  🌸 Silent AI (Delta Mobile)"
+TitleLabel.Text = "  🌸 Silent AI (Smart Follow)"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
@@ -155,8 +142,8 @@ CloseCorner.Parent = CloseBtn
 -- Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.15, 0)
-StatusLabel.Text = "Status: ACTIVE\nListening for 'silent' or [$commands]"
+StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
+StatusLabel.Text = "Status: ACTIVE\nListening for 'silent'..."
 StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
@@ -166,43 +153,28 @@ StatusLabel.Parent = MainFrame
 
 -- Bot Toggle Button
 local BotToggleBtn = Instance.new("TextButton")
-BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 28)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.32, 0)
+BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
+BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
 BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
 BotToggleBtn.Text = "BOT: ON"
 BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 BotToggleBtn.Font = Enum.Font.GothamBold
-BotToggleBtn.TextSize = 11
+BotToggleBtn.TextSize = 12
 BotToggleBtn.Parent = MainFrame
 
 local BotCorner = Instance.new("UICorner")
 BotCorner.CornerRadius = UDim.new(0, 6)
 BotCorner.Parent = BotToggleBtn
 
--- Debug Toggle Button
-local DebugBtn = Instance.new("TextButton")
-DebugBtn.Size = UDim2.new(0.9, 0, 0, 28)
-DebugBtn.Position = UDim2.new(0.05, 0, 0.46, 0)
-DebugBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
-DebugBtn.Text = "DEBUG MODE: OFF"
-DebugBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-DebugBtn.Font = Enum.Font.GothamBold
-DebugBtn.TextSize = 11
-DebugBtn.Parent = MainFrame
-
-local DebugCorner = Instance.new("UICorner")
-DebugCorner.CornerRadius = UDim.new(0, 6)
-DebugCorner.Parent = DebugBtn
-
 -- Mode Swap Button
 local ModeBtn = Instance.new("TextButton")
-ModeBtn.Size = UDim2.new(0.9, 0, 0, 28)
-ModeBtn.Position = UDim2.new(0.05, 0, 0.60, 0)
+ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
+ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
 ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
 ModeBtn.Text = "Mode: OwO Mode"
 ModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ModeBtn.Font = Enum.Font.GothamBold
-ModeBtn.TextSize = 11
+ModeBtn.TextSize = 12
 ModeBtn.Parent = MainFrame
 
 local ModeCorner = Instance.new("UICorner")
@@ -211,13 +183,13 @@ ModeCorner.Parent = ModeBtn
 
 -- Stop Follow Button
 local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 28)
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
 StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 StopFollowBtn.Text = "Stop Following"
 StopFollowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 StopFollowBtn.Font = Enum.Font.GothamBold
-StopFollowBtn.TextSize = 11
+StopFollowBtn.TextSize = 12
 StopFollowBtn.Parent = MainFrame
 
 local StopCorner = Instance.new("UICorner")
@@ -235,38 +207,20 @@ BotToggleBtn.MouseButton1Click:Connect(function()
         BotToggleBtn.Text = "BOT: ON"
         BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
         StatusLabel.Text = "Status: ACTIVE\nListening..."
-        debugLog("BOT ENABLED")
     else
         BotToggleBtn.Text = "BOT: OFF"
         BotToggleBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
         StatusLabel.Text = "Status: INACTIVE"
-        debugLog("BOT DISABLED")
-    end
-end)
-
-DebugBtn.MouseButton1Click:Connect(function()
-    debugMode = not debugMode
-    if debugMode then
-        DebugBtn.Text = "DEBUG MODE: ON"
-        DebugBtn.BackgroundColor3 = Color3.fromRGB(200, 140, 40)
-        debugLog("DEBUG MODE ACTIVATED")
-    else
-        debugLog("DEBUG MODE DEACTIVATED")
-        debugMode = false
-        DebugBtn.Text = "DEBUG MODE: OFF"
-        DebugBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
     end
 end)
 
 ModeBtn.MouseButton1Click:Connect(function()
     currentModeIndex = (currentModeIndex % #Modes) + 1
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
-    debugLog("PERSONALITY MODE CHANGED TO " .. Modes[currentModeIndex].Name:upper())
 end)
 
 -- === FULL SHUTDOWN ===
 local function destroyAllInstances()
-    debugLog("SHUTTING DOWN ALL INSTANCES")
     botEnabled = false
     if followConnection then
         followConnection:Disconnect()
@@ -289,23 +243,16 @@ CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
 -- === AI API QUERY ===
 local function queryAI(promptText, senderName)
-    if not request then 
-        debugLog("ERROR: MISSING EXECUTOR HTTP REQUEST API")
-        return "Executor missing request API!" 
-    end
-
-    local sysPrompt = debugMode and "You are a raw system model. Answer as directly and plainly as possible without any personality or fluff." or Modes[currentModeIndex].Prompt
+    if not request then return "Executor missing request API!" end
 
     local payload = HttpService:JSONEncode({
         model = "openrouter/free",
         max_tokens = 40,
         messages = {
-            { role = "system", content = sysPrompt },
+            { role = "system", content = Modes[currentModeIndex].Prompt },
             { role = "user", content = senderName .. ": " .. promptText }
         }
     })
-
-    debugLog("SENDING API PAYLOAD FOR " .. senderName:upper())
 
     local success, response = pcall(function()
         return request({
@@ -324,22 +271,18 @@ local function queryAI(promptText, senderName)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
             if type(rawContent) == "string" and rawContent ~= "" then
-                local cleaned = rawContent:gsub('^"', ''):gsub('"$', '')
-                debugLog("RECEIVED RESPONSE: " .. cleaned)
-                return cleaned
+                return rawContent:gsub('^"', ''):gsub('"$', '')
             end
         end
     end
 
-    debugLog("ERROR: API REQUEST TIMED OUT OR FAILED")
-    return debugMode and "--SILENTAI API ERROR--" or "B-Baka! AI timed out... ♡"
+    return "B-Baka! AI timed out... ♡"
 end
 
 -- === NAVIGATION CONTROLS ===
 local function startFollowing(player)
     targetFollowPlayer = player
     if followConnection then followConnection:Disconnect() end
-    debugLog("STARTING FOLLOW ON " .. (player.DisplayName or player.Name):upper())
 
     followConnection = RunService.Heartbeat:Connect(function()
         if not targetFollowPlayer or not targetFollowPlayer.Character then return end
@@ -361,7 +304,6 @@ local function startFollowing(player)
 end
 
 local function stopFollowing()
-    debugLog("STOPPING FOLLOW CONNECTION")
     targetFollowPlayer = nil
     if followConnection then
         followConnection:Disconnect()
@@ -371,7 +313,7 @@ end
 
 StopFollowBtn.MouseButton1Click:Connect(function()
     stopFollowing()
-    if not debugMode then sendMessage("Stopped following! ♡") end
+    sendMessage("Stopped following! ♡")
 end)
 
 -- === FRONT PLAYER DETECTION ===
@@ -417,26 +359,47 @@ local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
 
-    -- COMMAND OVERRIDES
-    if lowerMsg:find("%[%$debug%]") then
-        debugMode = not debugMode
-        DebugBtn.Text = debugMode and "DEBUG MODE: ON" or "DEBUG MODE: OFF"
-        DebugBtn.BackgroundColor3 = debugMode and Color3.fromRGB(200, 140, 40) or Color3.fromRGB(70, 70, 90)
-        debugLog("DEBUG MODE SET TO " .. tostring(debugMode):upper())
-        return
-    elseif lowerMsg:find("%[%$stop%]") then
+    -- Direct Command Handling ($commands)
+    if lowerMsg:find("%$stop") then
         stopFollowing()
-        debugLog("EXEC OVERRIDE: STOP FOLLOW")
+        sendMessage("Stopped following! ♡")
         return
-    elseif lowerMsg:find("%[%$follow%]") then
+    elseif lowerMsg:find("%$follow") then
         startFollowing(player)
-        debugLog("EXEC OVERRIDE: FOLLOW SENDER")
+        sendMessage("Following " .. senderName .. "! ♡")
         return
-    elseif lowerMsg:find("%[%$mode%]") then
+    elseif lowerMsg:find("%$owo") then
+        currentModeIndex = 1
+        ModeBtn.Text = "Mode: OwO Mode"
+        sendMessage("Switched to OwO mode! >w<")
+        return
+    elseif lowerMsg:find("%$tsundere") then
+        currentModeIndex = 2
+        ModeBtn.Text = "Mode: Tsundere Mode"
+        sendMessage("B-Baka! Switched to Tsundere mode!")
+        return
+    elseif lowerMsg:find("%$yandere") then
+        currentModeIndex = 3
+        ModeBtn.Text = "Mode: Yandere Mode"
+        sendMessage("Switched to Yandere mode... ♡")
+        return
+    elseif lowerMsg:find("%$mode") then
         currentModeIndex = (currentModeIndex % #Modes) + 1
         ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
-        debugLog("EXEC OVERRIDE: SWAPPED MODE TO " .. Modes[currentModeIndex].Name:upper())
+        sendMessage("Mode set to: " .. Modes[currentModeIndex].Name .. "! ♡")
         return
+    elseif lowerMsg:find("%$goto%s+(%w+)") or lowerMsg:find("%$go to%s+(%w+)") then
+        local targetName = lowerMsg:match("%$goto%s+(%w+)") or lowerMsg:match("%$go to%s+(%w+)")
+        if targetName then
+            local foundPlayer = findPlayerByName(targetName)
+            if foundPlayer then
+                sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡")
+                startFollowing(foundPlayer)
+            else
+                sendMessage("I couldn't find anyone named " .. targetName .. "!")
+            end
+            return
+        end
     end
 
     if not botEnabled then return end
@@ -446,60 +409,50 @@ local function processIncomingMessage(player, messageText)
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
     if isTriggered or isContinuous then
-        debugLog("CHAT INCOMING FROM " .. senderName:upper() .. ": " .. messageText)
-
         if isProcessing then
-            debugLog("BOT BUSY: SENDING PROCESSING NOTICE")
-            if debugMode then
-                sendMessage("--SILENTAI BUSY PROCESSING--")
-            else
-                sendMessage(Modes[currentModeIndex].ThinkingMsg)
-            end
+            sendMessage(Modes[currentModeIndex].ThinkingMsg)
             return
         end
 
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- GOTO TARGET
+        -- GOTO TARGET via natural phrase
         if lowerMsg:find("goto") or lowerMsg:find("go to") then
             local targetName = lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("go to%s+(%w+)")
             if targetName then
                 local foundPlayer = findPlayerByName(targetName)
                 if foundPlayer then
-                    if not debugMode then sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡") end
+                    sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡")
                     startFollowing(foundPlayer)
                     return
                 else
-                    if not debugMode then sendMessage("I couldn't find anyone named " .. targetName .. "!") end
-                    debugLog("TARGET " .. targetName:upper() .. " NOT FOUND")
+                    sendMessage("I couldn't find anyone named " .. targetName .. "!")
                     return
                 end
             end
         end
 
-        -- FOLLOW / STOP
+        -- FOLLOW / STOP via natural phrase
         if lowerMsg:find("follow me") or lowerMsg:find("come here") or (lowerMsg:find("follow") and not lowerMsg:find("stop")) then
-            if not debugMode then sendMessage("Coming to you, " .. senderName .. "! ♡") end
+            sendMessage("Coming to you, " .. senderName .. "! ♡")
             startFollowing(player)
             return
         elseif lowerMsg:find("stop follow") or lowerMsg:find("stop") or lowerMsg:find("stay") then
             stopFollowing()
-            if not debugMode then sendMessage("Stopped following! ♡") end
+            sendMessage("Stopped following! ♡")
             return
         end
 
-        -- FRONT PLAYER CONTEXT
+        -- FRONT PLAYER CONTEXT EVALUATION
         local processedPrompt = messageText
         if lowerMsg:find("person in front") or lowerMsg:find("person infront") or lowerMsg:find("guy in front") then
             local frontPlayer = getPlayerInFront()
             if frontPlayer then
                 local pName = frontPlayer.DisplayName or frontPlayer.Name
                 processedPrompt = processedPrompt .. " (Context: The player standing directly in front of you is named " .. pName .. ")"
-                debugLog("DETECTED FRONT PLAYER: " .. pName:upper())
             else
                 processedPrompt = processedPrompt .. " (Context: No player is standing directly in front of you)"
-                debugLog("NO FRONT PLAYER DETECTED")
             end
         end
 
@@ -538,5 +491,3 @@ pcall(function()
         table.insert(chatConnections, c2)
     end
 end)
-
-debugLog("READY AND LISTENING")
