@@ -175,7 +175,7 @@ ModeCorner.CornerRadius = UDim.new(0, 6)
 ModeCorner.Parent = ModeBtn
 
 local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 0.74, 0)
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
 StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 StopFollowBtn.Text = "Stop Following"
@@ -236,7 +236,7 @@ end
 
 CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- === AI API QUERY WITH DETAILED DEBUG ===
+-- === AI API QUERY WITH RETRY LOOP ===
 local function queryAI(promptText, senderName)
     if not request then return "[Debug Error: Executor missing request API]" end
 
@@ -250,70 +250,71 @@ local function queryAI(promptText, senderName)
         }
     })
 
-    local success, response = pcall(function()
-        return request({
-            Url = OPENROUTER_URL,
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json",
-                ["Authorization"] = "Bearer " .. OPENROUTER_API_KEY:gsub("%s+", "")
-            },
-            Body = payload
-        })
-    end)
+    local maxRetries = 3
+    local lastError = ""
 
-    if not success then
-        return "[Debug HTTP Exec Error: " .. tostring(response) .. "]"
-    end
+    for attempt = 1, maxRetries do
+        local success, response = pcall(function()
+            return request({
+                Url = OPENROUTER_URL,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json",
+                    ["Authorization"] = "Bearer " .. OPENROUTER_API_KEY:gsub("%s+", "")
+                },
+                Body = payload
+            })
+        end)
 
-    if success and response then
-        if response.StatusCode and response.StatusCode ~= 200 then
-            local errReason = "HTTP " .. tostring(response.StatusCode)
-            if response.Body then
-                local parseOk, parsedErr = pcall(function() return HttpService:JSONDecode(response.Body) end)
-                if parseOk and parsedErr and parsedErr.error and parsedErr.error.message then
-                    errReason = errReason .. ": " .. tostring(parsedErr.error.message)
-                else
-                    errReason = errReason .. ": " .. tostring(response.Body):sub(1, 60)
-                end
-            end
-            return "[Debug OpenRouter Error: " .. errReason .. "]"
-        end
-
-        if response.Body then
-            local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
-            if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
-                local rawContent = data.choices[1].message.content
-                if type(rawContent) == "string" and rawContent ~= "" then
-                    rawContent = rawContent:gsub("<think>.-</think>", "")
-                    
-                    local validLines = {}
-                    for line in rawContent:gmatch("[^\r\n]+") do
-                        local lower = line:lower()
-                        if not lower:find("^okay,") and not lower:find("^analyze") and not lower:find("^the user") and not lower:find("thought process") then
-                            table.insert(validLines, line)
+        if success and response then
+            if response.StatusCode == 200 and response.Body then
+                local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
+                if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
+                    local rawContent = data.choices[1].message.content
+                    if type(rawContent) == "string" and rawContent ~= "" then
+                        rawContent = rawContent:gsub("<think>.-</think>", "")
+                        
+                        local validLines = {}
+                        for line in rawContent:gmatch("[^\r\n]+") do
+                            local lower = line:lower()
+                            if not lower:find("^okay,") and not lower:find("^analyze") and not lower:find("^the user") and not lower:find("thought process") then
+                                table.insert(validLines, line)
+                            end
                         end
-                    end
 
-                    if #validLines > 0 then
-                        rawContent = validLines[#validLines]
-                    end
+                        if #validLines > 0 then
+                            rawContent = validLines[#validLines]
+                        end
 
-                    rawContent = rawContent:gsub("%b[]", "")
-                    rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
-                    rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
+                        rawContent = rawContent:gsub("%b[]", "")
+                        rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
+                        rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
 
-                    if rawContent ~= "" then
-                        return rawContent
+                        if rawContent ~= "" then
+                            return rawContent
+                        end
                     end
                 end
             else
-                return "[Debug Parse Fail: Invalid JSON choices structural layout]"
+                if response.Body then
+                    local parseOk, parsedErr = pcall(function() return HttpService:JSONDecode(response.Body) end)
+                    if parseOk and parsedErr and parsedErr.error and parsedErr.error.message then
+                        lastError = "HTTP " .. tostring(response.StatusCode) .. ": " .. tostring(parsedErr.error.message)
+                    else
+                        lastError = "HTTP " .. tostring(response.StatusCode)
+                    end
+                end
             end
+        else
+            lastError = tostring(response)
+        end
+
+        if attempt < maxRetries then
+            task.wait(1)
         end
     end
 
-    return "[Debug Error: Unknown OpenRouter failure]"
+    return "[Debug OpenRouter Error after " .. tostring(maxRetries) .. " attempts: " .. lastError .. "]"
 end
 
 -- === NAVIGATION CONTROLS ===
@@ -419,7 +420,7 @@ local function processIncomingMessage(player, messageText)
         return
     end
 
-    -- 2. Target-based Follow/Goto (Check targeted names FIRST before defaulting to sender)
+    -- 2. Target-based Follow/Goto
     local targetName = lowerMsg:match("%$goto%s+(%w+)") 
                     or lowerMsg:match("%$go to%s+(%w+)") 
                     or lowerMsg:match("%$follow%s+(%w+)")
@@ -438,7 +439,7 @@ local function processIncomingMessage(player, messageText)
         return
     end
 
-    -- 3. Self-Follow Commands ($follow, "follow me", "come here")
+    -- 3. Self-Follow Commands
     if lowerMsg:find("%$follow") or lowerMsg:find("follow me") or lowerMsg:find("come here") then
         sendMessage("Coming to you, " .. senderName .. "! ♡")
         startFollowing(player)
@@ -516,7 +517,7 @@ pcall(function()
         end
         local c2 = Players.PlayerAdded:Connect(function(p)
             local c = p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
-            table.insert(chatConnections, c)
+            table.insert(chatConnections, c2)
         end)
         table.insert(chatConnections, c2)
     end
