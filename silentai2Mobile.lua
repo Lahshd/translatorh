@@ -1,6 +1,7 @@
 -- === DELTA & UNIVERSAL INITIALIZATION ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local PathfindingService = game:GetService("PathfindingService")
 
 while not LocalPlayer do
     task.wait(0.1)
@@ -33,6 +34,7 @@ local lastActiveUser = nil
 local lastActiveTime = 0
 local targetFollowPlayer = nil
 local followTask = nil
+local activePathTask = nil
 local chatConnections = {}
 
 local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Do not output thinking, reasoning, or meta remarks."
@@ -209,17 +211,21 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
-local function stopFollowing()
+local function stopMovement()
     targetFollowPlayer = nil
     if followTask then
         task.cancel(followTask)
         followTask = nil
     end
+    if activePathTask then
+        task.cancel(activePathTask)
+        activePathTask = nil
+    end
 end
 
 local function destroyAllInstances()
     botEnabled = false
-    stopFollowing()
+    stopMovement()
     for _, conn in ipairs(chatConnections) do
         if conn then conn:Disconnect() end
     end
@@ -316,9 +322,50 @@ local function queryAI(promptText, senderName)
     return "[Debug OpenRouter Error after " .. tostring(maxRetries) .. " attempts: " .. lastError .. "]"
 end
 
--- === NAVIGATION & SPATIAL CONTROLS ===
+-- === PATHFINDING & NAVIGATION ENGINE ===
+local function navigateToPosition(targetPos, isSeat, seatInstance)
+    stopMovement()
+    
+    activePathTask = task.spawn(function()
+        local myChar = LocalPlayer.Character
+        if not myChar then return end
+        local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not myHRP then return end
+
+        local path = PathfindingService:CreatePath({
+            AgentRadius = 2,
+            AgentHeight = 5,
+            AgentCanJump = true
+        })
+
+        local success, err = pcall(function()
+            path:ComputeAsync(myHRP.Position, targetPos)
+        end)
+
+        if success and path.Status == Enum.PathStatus.Success then
+            local waypoints = path:GetWaypoints()
+            for _, waypoint in ipairs(waypoints) do
+                if waypoint.Action == Enum.PathWaypointAction.Jump then
+                    humanoid.Jump = true
+                end
+                humanoid:MoveTo(waypoint.Position)
+                local moveFinished = humanoid.MoveToFinished:Wait()
+                if not moveFinished then break end
+            end
+
+            if isSeat and seatInstance then
+                seatInstance:Sit(humanoid)
+            end
+        else
+            -- Fallback straight move if path calculation fails
+            humanoid:MoveTo(targetPos)
+        end
+    end)
+end
+
 local function startFollowing(player)
-    stopFollowing()
+    stopMovement()
     targetFollowPlayer = player
 
     followTask = task.spawn(function()
@@ -334,63 +381,34 @@ local function startFollowing(player)
 
                     if humanoid and targetHRP and myHRP then
                         local dist = (myHRP.Position - targetHRP.Position).Magnitude
-                        if dist > 4 then
-                            humanoid:MoveTo(targetHRP.Position)
+                        if dist > 6 then
+                            navigateToPosition(targetHRP.Position, false, nil)
                         end
                     end
                 end
             end)
-            task.wait(0.2)
+            task.wait(1.5)
         end
     end)
 end
 
-local function walkToPositionDirectly(pos)
-    stopFollowing()
-    local myChar = LocalPlayer.Character
-    if not myChar then return end
-    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid:MoveTo(pos)
+-- Scan objects relative to either the Speaker or the Bot
+local function findTargetObjectNearPlayer(speakerPlayer)
+    local refPosition = nil
+    
+    if speakerPlayer and speakerPlayer.Character and speakerPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        refPosition = speakerPlayer.Character.HumanoidRootPart.Position
+    else
+        local myChar = LocalPlayer.Character
+        if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+            refPosition = myChar.HumanoidRootPart.Position
+        end
     end
-end
 
-local function getObjectInFront()
-    local myChar = LocalPlayer.Character
-    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
-
-    local myHRP = myChar.HumanoidRootPart
-    local rayOrigin = myHRP.Position
-    local rayDirection = (myHRP.CFrame.LookVector * 35) + Vector3.new(0, -2, 0)
-
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {myChar}
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-
-    local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    if result and result.Instance then
-        local hitObject = result.Instance
-        local hitModel = hitObject:FindFirstAncestorOfClass("Model") or hitObject
-        return {
-            Instance = hitObject,
-            ModelName = hitModel.Name,
-            Position = result.Position,
-            IsSeat = hitObject:IsA("Seat") or hitObject:IsA("VehicleSeat")
-        }
-    end
-    return nil
-end
-
-local function findTargetObject()
-    local rayResult = getObjectInFront()
-    if rayResult then return rayResult end
-
-    local myChar = LocalPlayer.Character
-    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
-    local myPos = myChar.HumanoidRootPart.Position
+    if not refPosition then return nil end
 
     local closestObj = nil
-    local shortestDist = 80
+    local shortestDist = 120
 
     for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("Model") or obj:IsA("BasePart") then
@@ -398,7 +416,7 @@ local function findTargetObject()
             if name:find("chair") or name:find("seat") or name:find("stool") or name:find("bench") then
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
                 if part then
-                    local dist = (part.Position - myPos).Magnitude
+                    local dist = (part.Position - refPosition).Magnitude
                     if dist < shortestDist then
                         shortestDist = dist
                         closestObj = {
@@ -415,27 +433,8 @@ local function findTargetObject()
     return closestObj
 end
 
-local function walkToObjectPosition(targetPos, isSeat, seatInstance)
-    stopFollowing()
-    local myChar = LocalPlayer.Character
-    if not myChar then return end
-    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-
-    humanoid:MoveTo(targetPos)
-
-    if isSeat and seatInstance then
-        task.spawn(function()
-            local reached = humanoid.MoveToFinished:Wait()
-            if reached then
-                seatInstance:Sit(humanoid)
-            end
-        end)
-    end
-end
-
 StopFollowBtn.MouseButton1Click:Connect(function()
-    stopFollowing()
+    stopMovement()
     sendMessage("Stopped following! ♡")
 end)
 
@@ -485,7 +484,7 @@ local function processIncomingMessage(player, messageText)
 
     -- 1. Explicit Prefix Commands
     if lowerMsg:find("%$stop") then
-        stopFollowing()
+        stopMovement()
         sendMessage("Stopped following! ♡")
         return
     elseif lowerMsg:find("%$owo") then
@@ -525,18 +524,18 @@ local function processIncomingMessage(player, messageText)
 
         local detectedObj = nil
 
-        -- ORDER FIX: Check Player Movement Targets FIRST before Object Scans
+        -- Process Command Intent
         if lowerMsg:find("walk to me") or lowerMsg:find("come to me") or lowerMsg:find("come here") or lowerMsg:find("follow me") or lowerMsg:find("%$follow") then
             if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                walkToPositionDirectly(player.Character.HumanoidRootPart.Position)
+                navigateToPosition(player.Character.HumanoidRootPart.Position, false, nil)
             end
         elseif lowerMsg:find("stop follow") or lowerMsg:find("stop following") or lowerMsg:find("stay") then
-            stopFollowing()
-        elseif lowerMsg:find("chair") or lowerMsg:find("seat") or lowerMsg:find("bench") or lowerMsg:find("sit") or lowerMsg:find("walk to that") or lowerMsg:find("go to that") then
-            stopFollowing()
-            detectedObj = findTargetObject()
+            stopMovement()
+        elseif lowerMsg:find("chair") or lowerMsg:find("seat") or lowerMsg:find("bench") or lowerMsg:find("sit") then
+            stopMovement()
+            detectedObj = findTargetObjectNearPlayer(player)
             if detectedObj then
-                walkToObjectPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
+                navigateToPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
             end
         else
             local targetName = lowerMsg:match("follow%s+(%w+)") or lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("walk to%s+(%w+)")
@@ -550,20 +549,7 @@ local function processIncomingMessage(player, messageText)
         local processedPrompt = messageText
         
         if detectedObj then
-            processedPrompt = processedPrompt .. " [System Note: You just spotted an object named '" .. detectedObj.ModelName .. "' in front of you and are walking toward it.]"
-        elseif lowerMsg:find("front") or lowerMsg:find("who is in") or lowerMsg:find("who's in") or lowerMsg:find("in front") or lowerMsg:find("staring at") then
-            local frontPlayer = getPlayerInFront()
-            if frontPlayer then
-                local pName = frontPlayer.DisplayName or frontPlayer.Name
-                processedPrompt = processedPrompt .. " [System Note: The player standing directly in front of you is " .. pName .. "]"
-            else
-                local frontObj = getObjectInFront()
-                if frontObj then
-                    processedPrompt = processedPrompt .. " [System Note: No player is in front of you, but you see an object/structure named '" .. frontObj.ModelName .. "']"
-                else
-                    processedPrompt = processedPrompt .. " [System Note: There is currently nobody and no specific object directly in front of you]"
-                end
-            end
+            processedPrompt = processedPrompt .. " [System Note: You located an object named '" .. detectedObj.ModelName .. "' near the user and are pathfinding toward it.]"
         end
 
         isProcessing = true
