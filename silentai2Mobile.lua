@@ -103,7 +103,7 @@ local function performDynamicRaycast()
     return nil
 end
 
--- Dynamic Background Scanner (Runs every 0.3s)
+-- Background Raycast Scanner Loop
 task.spawn(function()
     while true do
         if botEnabled then
@@ -164,7 +164,6 @@ local function gotoPositionDynamic(targetPosition, isSeat, seatInstance)
         raycastParams.FilterAncestors = {myChar}
         raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-        -- Direct Line of Sight Check
         local directHit = workspace:Raycast(myHRP.Position, targetPosition - myHRP.Position, raycastParams)
         if not directHit or (directHit.Position - targetPosition).Magnitude < 3 then
             humanoid:MoveTo(targetPosition)
@@ -173,7 +172,6 @@ local function gotoPositionDynamic(targetPosition, isSeat, seatInstance)
             return
         end
 
-        -- Compute Dynamic Pathfinding Route
         local path = PathfindingService:CreatePath({
             AgentRadius = 2,
             AgentHeight = 5,
@@ -198,11 +196,10 @@ local function gotoPositionDynamic(targetPosition, isSeat, seatInstance)
 
                 local startTime = tick()
                 while not moveFinished and (tick() - startTime) < 4 do
-                    -- Real-time dynamic obstacle check along waypoint route
                     local pathHit = workspace:Raycast(myHRP.Position, waypoint.Position - myHRP.Position, raycastParams)
                     if pathHit and pathHit.Instance and pathHit.Instance.CanCollide and pathHit.Distance < 2.5 then
                         conn:Disconnect()
-                        gotoPositionDynamic(targetPosition, isSeat, seatInstance) -- Recalculate route dynamically
+                        gotoPositionDynamic(targetPosition, isSeat, seatInstance)
                         return
                     end
                     task.wait(0.1)
@@ -217,14 +214,13 @@ local function gotoPositionDynamic(targetPosition, isSeat, seatInstance)
     end)
 end
 
--- Real-Time Dynamic Target Tracking Loop
 local function startFollowingDynamic(player)
     stopNavigation()
     targetFollowPlayer = player
 
     followTask = task.spawn(function()
         while targetFollowPlayer == player do
-            local myChar = LocalPlayer.Character
+            local myChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             local targetChar = player.Character
 
             if myChar and targetChar then
@@ -236,7 +232,6 @@ local function startFollowingDynamic(player)
                     local dist = (myHRP.Position - targetHRP.Position).Magnitude
                     
                     if dist > 6 then
-                        -- Check line of sight dynamically while following
                         local raycastParams = RaycastParams.new()
                         raycastParams.FilterAncestors = {myChar, targetChar}
                         raycastParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -244,11 +239,9 @@ local function startFollowingDynamic(player)
                         local hit = workspace:Raycast(myHRP.Position, targetHRP.Position - myHRP.Position, raycastParams)
                         
                         if hit and hit.Instance and hit.Instance.CanCollide then
-                            -- Obstacle in the way: compute dynamic pathfinding to target
                             gotoPositionDynamic(targetHRP.Position, false, nil)
                             task.wait(1.5)
                         else
-                            -- Clear line of sight: directly move towards target
                             humanoid:MoveTo(targetHRP.Position)
                         end
                     end
@@ -360,7 +353,7 @@ ModeCorner.CornerRadius = UDim.new(0, 6)
 ModeCorner.Parent = ModeBtn
 
 local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 0.30)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
 StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 StopFollowBtn.Text = "Stop Movement"
@@ -441,17 +434,44 @@ end
 
 -- === DYNAMIC MESSAGE & COMMAND PROCESSOR ===
 local function processIncomingMessage(player, messageText)
+    if not botEnabled then return end
+
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
 
-    if not botEnabled or player == LocalPlayer then return end
-
     -- 1. Explicit Prefixed Commands
-    if lowerMsg:find("$stop") then stopNavigation() sendMessage("Stopped movement! ♡") return end
-    if lowerMsg:find("$owo") then currentModeIndex = 1 ModeBtn.Text = "Mode: OwO Mode" sendMessage("Switched to OwO mode! >w<") return end
-    if lowerMsg:find("$tsundere") then currentModeIndex = 2 ModeBtn.Text = "Mode: Tsundere Mode" sendMessage("B-Baka! Switched to Tsundere mode!") return end
-    if lowerMsg:find("$yandere") then currentModeIndex = 3 ModeBtn.Text = "Mode: Yandere Mode" sendMessage("Switched to Yandere mode... ♡") return end
-    if lowerMsg:find("$follow") then startFollowingDynamic(player) sendMessage("Following you! ♡") return end
+    if lowerMsg:find("$stop") then 
+        stopNavigation() 
+        sendMessage("Stopped movement! ♡") 
+        return 
+    end
+
+    if lowerMsg:find("$owo") or lowerMsg:find("$mode owo") then 
+        currentModeIndex = 1 
+        ModeBtn.Text = "Mode: OwO Mode" 
+        sendMessage("Switched to OwO mode! >w<") 
+        return 
+    end
+
+    if lowerMsg:find("$tsundere") or lowerMsg:find("$mode tsundere") then 
+        currentModeIndex = 2 
+        ModeBtn.Text = "Mode: Tsundere Mode" 
+        sendMessage("B-Baka! Switched to Tsundere mode!") 
+        return 
+    end
+
+    if lowerMsg:find("$yandere") or lowerMsg:find("$mode yandere") then 
+        currentModeIndex = 3 
+        ModeBtn.Text = "Mode: Yandere Mode" 
+        sendMessage("Switched to Yandere mode... ♡") 
+        return 
+    end
+
+    if lowerMsg:find("$follow") then 
+        startFollowingDynamic(player) 
+        sendMessage("Following you! ♡") 
+        return 
+    end
 
     -- 2. Dynamic Movement & Raycast Trigger Processing
     local dynamicActionExecuted = false
@@ -480,7 +500,6 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- Inject Dynamic Environmental Context into AI Prompt
         local contextText = messageText
         local currentScanObj = detectedObjectCache or performDynamicRaycast()
 
@@ -500,7 +519,7 @@ local function processIncomingMessage(player, messageText)
             local cleanPrompt = contextText:gsub("hey silent", ""):gsub("silent", "")
             local reply = queryAI(cleanPrompt, senderName)
 
-            if reply and reply ~= "" then
+            if reply and reply ~= "" and not reply:find("%[Debug Error") then
                 sendMessage(reply)
             end
 
