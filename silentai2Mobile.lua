@@ -25,7 +25,7 @@ end)
 -- Configuration & State
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-local MODEL_NAME = "google/gemini-2.5-flash:free"
+local MODEL_NAME = "meta-llama/llama-3.1-8b-instruct:free"
 
 local botEnabled = true
 local continuousTalk = true
@@ -36,23 +36,23 @@ local targetFollowPlayer = nil
 local followTask = nil
 local chatConnections = {}
 
-local STRICT_RULE = " Answer ONLY with the raw character reply text. Never output thinking, system notes, or preambles."
+local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Do not output thinking, reasoning, or meta remarks."
 
 local currentModeIndex = 1
 local Modes = {
     {
         Name = "OwO Mode", 
-        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Under 12 words." .. STRICT_RULE,
+        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Maximum 10 words." .. STRICT_RULE,
         ThinkingMsg = "H-Hold on, my brain is processing so many things >w<!"
     },
     {
         Name = "Tsundere Mode", 
-        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Under 12 words." .. STRICT_RULE,
+        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Maximum 10 words." .. STRICT_RULE,
         ThinkingMsg = "B-Baka! Don't rush me, I'm already thinking!"
     },
     {
         Name = "Yandere Mode", 
-        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Under 12 words." .. STRICT_RULE,
+        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Maximum 10 words." .. STRICT_RULE,
         ThinkingMsg = "Wait your turn... my mind is busy right now~ ♡"
     }
 }
@@ -236,13 +236,14 @@ end
 
 CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- === AI API QUERY ===
+-- === AI API QUERY WITH DETAILED DEBUG ===
 local function queryAI(promptText, senderName)
-    if not request then return "Executor missing request API!" end
+    if not request then return "[Debug Error: Executor missing request API]" end
 
     local payload = HttpService:JSONEncode({
         model = MODEL_NAME,
-        max_tokens = 100,
+        max_tokens = 60,
+        temperature = 0.7,
         messages = {
             { role = "system", content = Modes[currentModeIndex].Prompt },
             { role = "user", content = senderName .. ": " .. promptText }
@@ -261,39 +262,61 @@ local function queryAI(promptText, senderName)
         })
     end)
 
-    if success and response and response.Body then
-        local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
-        if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
-            local rawContent = data.choices[1].message.content
-            if type(rawContent) == "string" and rawContent ~= "" then
-                rawContent = rawContent:gsub("<think>.-</think>", "")
-                
-                local cleanLines = {}
-                for line in rawContent:gmatch("[^\r\n]+") do
-                    if not line:find("Okay,") and not line:find("Analyze") and not line:find("user is asking") and not line:find("thinking process") then
-                        table.insert(cleanLines, line)
+    if not success then
+        return "[Debug HTTP Exec Error: " .. tostring(response) .. "]"
+    end
+
+    if success and response then
+        if response.StatusCode and response.StatusCode ~= 200 then
+            local errReason = "HTTP " .. tostring(response.StatusCode)
+            if response.Body then
+                local parseOk, parsedErr = pcall(function() return HttpService:JSONDecode(response.Body) end)
+                if parseOk and parsedErr and parsedErr.error and parsedErr.error.message then
+                    errReason = errReason .. ": " .. tostring(parsedErr.error.message)
+                else
+                    errReason = errReason .. ": " .. tostring(response.Body):sub(1, 60)
+                end
+            end
+            return "[Debug OpenRouter Error: " .. errReason .. "]"
+        end
+
+        if response.Body then
+            local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
+            if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
+                local rawContent = data.choices[1].message.content
+                if type(rawContent) == "string" and rawContent ~= "" then
+                    rawContent = rawContent:gsub("<think>.-</think>", "")
+                    
+                    local validLines = {}
+                    for line in rawContent:gmatch("[^\r\n]+") do
+                        local lower = line:lower()
+                        if not lower:find("^okay,") and not lower:find("^analyze") and not lower:find("^the user") and not lower:find("thought process") then
+                            table.insert(validLines, line)
+                        end
+                    end
+
+                    if #validLines > 0 then
+                        rawContent = validLines[#validLines]
+                    end
+
+                    rawContent = rawContent:gsub("%b[]", "")
+                    rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
+                    rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
+
+                    if rawContent ~= "" then
+                        return rawContent
                     end
                 end
-
-                if #cleanLines > 0 then
-                    rawContent = cleanLines[#cleanLines]
-                end
-
-                rawContent = rawContent:gsub("%b[]", "")
-                rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
-                rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
-
-                if rawContent ~= "" then
-                    return rawContent
-                end
+            else
+                return "[Debug Parse Fail: Invalid JSON choices structural layout]"
             end
         end
     end
 
-    return Modes[currentModeIndex].ThinkingMsg
+    return "[Debug Error: Unknown OpenRouter failure]"
 end
 
--- === FIXED NAVIGATION CONTROLS ===
+-- === NAVIGATION CONTROLS ===
 local function startFollowing(player)
     stopFollowing()
     targetFollowPlayer = player
@@ -369,13 +392,10 @@ local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
 
+    -- 1. Explicit UI Commands ($prefix)
     if lowerMsg:find("%$stop") then
         stopFollowing()
         sendMessage("Stopped following! ♡")
-        return
-    elseif lowerMsg:find("%$follow") then
-        startFollowing(player)
-        sendMessage("Following " .. senderName .. "! ♡")
         return
     elseif lowerMsg:find("%$owo") then
         currentModeIndex = 1
@@ -397,23 +417,38 @@ local function processIncomingMessage(player, messageText)
         ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
         sendMessage("Mode set to: " .. Modes[currentModeIndex].Name .. "! ♡")
         return
-    elseif lowerMsg:find("%$goto%s+(%w+)") or lowerMsg:find("%$go to%s+(%w+)") then
-        local targetName = lowerMsg:match("%$goto%s+(%w+)") or lowerMsg:match("%$go to%s+(%w+)")
-        if targetName then
-            local foundPlayer = findPlayerByName(targetName)
-            if foundPlayer then
-                sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡")
-                startFollowing(foundPlayer)
-            else
-                sendMessage("I couldn't find anyone named " .. targetName .. "!")
-            end
-            return
+    end
+
+    -- 2. Target-based Follow/Goto (Check targeted names FIRST before defaulting to sender)
+    local targetName = lowerMsg:match("%$goto%s+(%w+)") 
+                    or lowerMsg:match("%$go to%s+(%w+)") 
+                    or lowerMsg:match("%$follow%s+(%w+)")
+                    or lowerMsg:match("goto%s+(%w+)") 
+                    or lowerMsg:match("go to%s+(%w+)") 
+                    or lowerMsg:match("follow%s+(%w+)")
+
+    if targetName and targetName ~= "me" and targetName ~= "us" then
+        local foundPlayer = findPlayerByName(targetName)
+        if foundPlayer then
+            sendMessage("Following " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡")
+            startFollowing(foundPlayer)
+        else
+            sendMessage("I couldn't find anyone named " .. targetName .. "!")
         end
+        return
+    end
+
+    -- 3. Self-Follow Commands ($follow, "follow me", "come here")
+    if lowerMsg:find("%$follow") or lowerMsg:find("follow me") or lowerMsg:find("come here") then
+        sendMessage("Coming to you, " .. senderName .. "! ♡")
+        startFollowing(player)
+        return
     end
 
     if not botEnabled then return end
     if player == LocalPlayer then return end
 
+    -- 4. General AI Conversation Triggers
     local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
@@ -426,26 +461,7 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        if lowerMsg:find("goto") or lowerMsg:find("go to") then
-            local targetName = lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("go to%s+(%w+)")
-            if targetName then
-                local foundPlayer = findPlayerByName(targetName)
-                if foundPlayer then
-                    sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡")
-                    startFollowing(foundPlayer)
-                    return
-                else
-                    sendMessage("I couldn't find anyone named " .. targetName .. "!")
-                    return
-                end
-            end
-        end
-
-        if lowerMsg:find("follow me") or lowerMsg:find("come here") or (lowerMsg:find("follow") and not lowerMsg:find("stop")) then
-            sendMessage("Coming to you, " .. senderName .. "! ♡")
-            startFollowing(player)
-            return
-        elseif lowerMsg:find("stop follow") or lowerMsg:find("stop") or lowerMsg:find("stay") then
+        if lowerMsg:find("stop follow") or lowerMsg:find("stop") or lowerMsg:find("stay") then
             stopFollowing()
             sendMessage("Stopped following! ♡")
             return
