@@ -1,13 +1,22 @@
--- Services
+-- === DELTA MOBILE SAFE INITIALIZATION ===
+print("--SILENTAI STARTING INITIALIZATION--")
+
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local LocalPlayer = Players.LocalPlayer
+
+-- Polling loop to prevent infinite hanging on mobile
+while not LocalPlayer do
+    task.wait(0.1)
+    LocalPlayer = Players.LocalPlayer
+end
+
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
--- HTTP Request Handler
-local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
+-- Delta & Universal Mobile HTTP Request Handler
+local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
 -- === CLEANUP PREEXISTING INSTANCES ===
 pcall(function()
@@ -76,7 +85,7 @@ local function debugLog(txt)
     end
 end
 
-debugLog("STARTING INITIALIZATION")
+debugLog("SYSTEM READY")
 
 -- === PURE NATIVE GUI ENGINE ===
 local ScreenGui = Instance.new("ScreenGui")
@@ -117,7 +126,7 @@ MainCorner.Parent = MainFrame
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "  🌸 Silent AI (Debug System)"
+TitleLabel.Text = "  🌸 Silent AI (Delta Mobile)"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
@@ -281,7 +290,7 @@ CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 -- === AI API QUERY ===
 local function queryAI(promptText, senderName)
     if not request then 
-        debugLog("ERROR: MISSING HTTP REQUEST API")
+        debugLog("ERROR: MISSING EXECUTOR HTTP REQUEST API")
         return "Executor missing request API!" 
     end
 
@@ -408,7 +417,7 @@ local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
 
-    -- EXPLICIT COMMAND SYSTEM OVERRIDES [$cmd]
+    -- COMMAND OVERRIDES
     if lowerMsg:find("%[%$debug%]") then
         debugMode = not debugMode
         DebugBtn.Text = debugMode and "DEBUG MODE: ON" or "DEBUG MODE: OFF"
