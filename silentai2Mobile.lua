@@ -323,7 +323,7 @@ local function queryAI(promptText, senderName)
 end
 
 -- === PATHFINDING & NAVIGATION ENGINE ===
-local function navigateToPosition(targetPos, isSeat, seatInstance)
+local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
     stopMovement()
     
     activePathTask = task.spawn(function()
@@ -356,44 +356,19 @@ local function navigateToPosition(targetPos, isSeat, seatInstance)
 
             if isSeat and seatInstance then
                 seatInstance:Sit(humanoid)
+            elseif targetTool and targetTool:IsA("Tool") then
+                pcall(function()
+                    humanoid:EquipTool(targetTool)
+                end)
             end
         else
-            -- Fallback straight move if path calculation fails
             humanoid:MoveTo(targetPos)
         end
     end)
 end
 
-local function startFollowing(player)
-    stopMovement()
-    targetFollowPlayer = player
-
-    followTask = task.spawn(function()
-        while targetFollowPlayer == player do
-            pcall(function()
-                local myChar = LocalPlayer.Character
-                local targetChar = targetFollowPlayer.Character
-
-                if myChar and targetChar then
-                    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-                    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
-                    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-
-                    if humanoid and targetHRP and myHRP then
-                        local dist = (myHRP.Position - targetHRP.Position).Magnitude
-                        if dist > 6 then
-                            navigateToPosition(targetHRP.Position, false, nil)
-                        end
-                    end
-                end
-            end)
-            task.wait(1.5)
-        end
-    end)
-end
-
--- Scan objects relative to either the Speaker or the Bot
-local function findTargetObjectNearPlayer(speakerPlayer)
+-- Generic Object Finder across Workspace
+local function findObjectByKeywords(speakerPlayer, textPrompt)
     local refPosition = nil
     
     if speakerPlayer and speakerPlayer.Character and speakerPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -408,12 +383,14 @@ local function findTargetObjectNearPlayer(speakerPlayer)
     if not refPosition then return nil end
 
     local closestObj = nil
-    local shortestDist = 120
+    local shortestDist = 150
+    local lowerPrompt = textPrompt:lower()
 
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") or obj:IsA("BasePart") then
-            local name = obj.Name:lower()
-            if name:find("chair") or name:find("seat") or name:find("stool") or name:find("bench") then
+        if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Tool") then
+            local objName = obj.Name:lower()
+            -- Check if object name appears anywhere in user message
+            if objName:len() > 2 and lowerPrompt:find(objName) then
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
                 if part then
                     local dist = (part.Position - refPosition).Magnitude
@@ -423,7 +400,8 @@ local function findTargetObjectNearPlayer(speakerPlayer)
                             Instance = obj,
                             ModelName = obj.Name,
                             Position = part.Position,
-                            IsSeat = obj:IsA("Seat") or obj:IsA("VehicleSeat") or (obj:FindFirstChildWhichIsA("Seat", true) ~= nil)
+                            IsSeat = obj:IsA("Seat") or obj:IsA("VehicleSeat") or (obj:FindFirstChildWhichIsA("Seat", true) ~= nil),
+                            IsTool = obj:IsA("Tool")
                         }
                     end
                 end
@@ -437,32 +415,6 @@ StopFollowBtn.MouseButton1Click:Connect(function()
     stopMovement()
     sendMessage("Stopped following! ♡")
 end)
-
-local function getPlayerInFront()
-    local myChar = LocalPlayer.Character
-    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
-
-    local myHRP = myChar.HumanoidRootPart
-    local closestPlayer = nil
-    local shortestDist = 25
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            local targetHRP = p.Character.HumanoidRootPart
-            local dirToTarget = (targetHRP.Position - myHRP.Position)
-            local dist = dirToTarget.Magnitude
-
-            if dist < shortestDist then
-                local dot = myHRP.CFrame.LookVector:Dot(dirToTarget.Unit)
-                if dot > 0.2 then
-                    shortestDist = dist
-                    closestPlayer = p
-                end
-            end
-        end
-    end
-    return closestPlayer
-end
 
 local function findPlayerByName(nameQuery)
     local query = nameQuery:lower()
@@ -482,7 +434,7 @@ local function processIncomingMessage(player, messageText)
     if not botEnabled then return end
     if player == LocalPlayer then return end
 
-    -- 1. Explicit Prefix Commands
+    -- Commands
     if lowerMsg:find("%$stop") then
         stopMovement()
         sendMessage("Stopped following! ♡")
@@ -502,14 +454,8 @@ local function processIncomingMessage(player, messageText)
         ModeBtn.Text = "Mode: Yandere Mode"
         sendMessage("Switched to Yandere mode... ♡")
         return
-    elseif lowerMsg:find("%$mode") then
-        currentModeIndex = (currentModeIndex % #Modes) + 1
-        ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
-        sendMessage("Mode set to: " .. Modes[currentModeIndex].Name .. "! ♡")
-        return
     end
 
-    -- 2. Trigger Check
     local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
@@ -522,34 +468,30 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        local detectedObj = nil
+        local detectedObj = findObjectByKeywords(player, messageText)
 
-        -- Process Command Intent
         if lowerMsg:find("walk to me") or lowerMsg:find("come to me") or lowerMsg:find("come here") or lowerMsg:find("follow me") or lowerMsg:find("%$follow") then
             if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                navigateToPosition(player.Character.HumanoidRootPart.Position, false, nil)
+                navigateToPosition(player.Character.HumanoidRootPart.Position, false, nil, nil)
             end
         elseif lowerMsg:find("stop follow") or lowerMsg:find("stop following") or lowerMsg:find("stay") then
             stopMovement()
-        elseif lowerMsg:find("chair") or lowerMsg:find("seat") or lowerMsg:find("bench") or lowerMsg:find("sit") then
+        elseif detectedObj then
             stopMovement()
-            detectedObj = findTargetObjectNearPlayer(player)
-            if detectedObj then
-                navigateToPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
-            end
+            navigateToPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance, detectedObj.IsTool and detectedObj.Instance or nil)
         else
             local targetName = lowerMsg:match("follow%s+(%w+)") or lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("walk to%s+(%w+)")
             if targetName and targetName ~= "me" and targetName ~= "us" then
                 local foundPlayer = findPlayerByName(targetName)
-                if foundPlayer then startFollowing(foundPlayer) end
+                if foundPlayer and foundPlayer.Character and foundPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    navigateToPosition(foundPlayer.Character.HumanoidRootPart.Position, false, nil, nil)
+                end
             end
         end
 
-        -- Context Prompt Generation
         local processedPrompt = messageText
-        
         if detectedObj then
-            processedPrompt = processedPrompt .. " [System Note: You located an object named '" .. detectedObj.ModelName .. "' near the user and are pathfinding toward it.]"
+            processedPrompt = processedPrompt .. " [System Note: You identified '" .. detectedObj.ModelName .. "' near the user and are pathfinding toward it.]"
         end
 
         isProcessing = true
