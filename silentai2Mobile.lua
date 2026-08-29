@@ -282,6 +282,7 @@ local function startFollowingPlayer(targetPlayer)
     end)
 end
 
+-- === CHAIR FIX: SEAT NAVIGATION & SITTING ROUTINE ===
 local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
     stopMovement()
     
@@ -315,6 +316,7 @@ local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
                 if not moveFinished then break end
             end
 
+            -- Execute Chair Sit Fix
             if isSeat and seatInstance then
                 humanoid:MoveTo(seatInstance.Position)
                 humanoid.MoveToFinished:Wait()
@@ -324,16 +326,21 @@ local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
             end
         else
             humanoid:MoveTo(targetPos)
+            if isSeat and seatInstance then
+                humanoid.MoveToFinished:Wait()
+                seatInstance:Sit(humanoid)
+            end
         end
     end)
 end
 
--- === INVENTORY INTERACTION ENGINE ===
+-- === INVENTORY TOOL FIX ENGINE ===
 local function getInventoryItems()
     local tools = {}
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
     local myChar = LocalPlayer.Character
 
+    -- Scans both Backpack and current Character model
     if backpack then
         for _, item in ipairs(backpack:GetChildren()) do
             if item:IsA("Tool") then table.insert(tools, item.Name) end
@@ -355,17 +362,22 @@ local function equipItemByName(itemName)
     if not humanoid then return false end
 
     local lowerName = itemName:lower()
+    
+    -- Check backpack first
     for _, tool in ipairs(backpack:GetChildren()) do
         if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
             humanoid:EquipTool(tool)
             return true, tool.Name
         end
     end
+    
+    -- Check if tool is already equipped in character model
     for _, tool in ipairs(myChar:GetChildren()) do
         if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
             return true, tool.Name
         end
     end
+    
     return false
 end
 
@@ -444,11 +456,22 @@ local function findObjectByKeywords(speakerPlayer, textPrompt)
                     local dist = (part.Position - refPosition).Magnitude
                     if dist < shortestDist then
                         shortestDist = dist
+                        
+                        -- Target exact Seat object inside chairs
+                        local seatTarget = obj:IsA("Seat") or obj:IsA("VehicleSeat")
+                        if not seatTarget and obj:IsA("Model") then
+                            local foundSeat = obj:FindFirstChildWhichIsA("Seat", true) or obj:FindFirstChildWhichIsA("VehicleSeat", true)
+                            if foundSeat then
+                                seatTarget = true
+                                obj = foundSeat
+                            end
+                        end
+
                         closestObj = {
                             Instance = obj,
                             ModelName = obj.Name,
-                            Position = part.Position - (part.CFrame.LookVector * 2),
-                            IsSeat = obj:IsA("Seat") or obj:IsA("VehicleSeat"),
+                            Position = part.Position,
+                            IsSeat = seatTarget,
                             IsTool = obj:IsA("Tool")
                         }
                     end
@@ -608,7 +631,7 @@ local function processIncomingMessage(player, messageText)
             return
         end
 
-        -- Navigation & Target Commands
+        -- Navigation & Target Commands (Chairs, Locations, Players)
         local detectedObj = findObjectByKeywords(player, messageText)
 
         if lowerMsg:find("follow me") or lowerMsg:find("%$follow") then
