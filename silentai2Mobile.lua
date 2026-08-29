@@ -38,24 +38,24 @@ local targetFollowPlayer = nil
 local followConnection = nil
 local chatConnections = {}
 
--- Mandatory system rule enforced across all modes to ban reasoning/thoughts output
-local STRICT_RULE = " CRITICAL DIRECTIVE: Output ONLY your direct spoken dialogue line. Under NO circumstance output reasoning, thinking process, system notes, internal thoughts, or meta text. Do NOT wrap output in codeblocks or quotes."
+-- Strict prompt parameters
+local STRICT_RULE = " Speak ONLY in-character dialogue. Absolutely NO thought processes, NO analysis, NO chain of thought, NO internal notes. Respond in 10 words or less."
 
 local currentModeIndex = 1
 local Modes = {
     {
         Name = "OwO Mode", 
-        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies strictly under 12 words." .. STRICT_RULE,
+        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters." .. STRICT_RULE,
         ThinkingMsg = "H-Hold on, my brain is processing so many things >w<!"
     },
     {
         Name = "Tsundere Mode", 
-        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies strictly under 12 words." .. STRICT_RULE,
+        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass." .. STRICT_RULE,
         ThinkingMsg = "B-Baka! Don't rush me, I'm already thinking!"
     },
     {
         Name = "Yandere Mode", 
-        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies strictly under 12 words." .. STRICT_RULE,
+        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats." .. STRICT_RULE,
         ThinkingMsg = "Wait your turn... my mind is busy right now~ ♡"
     }
 }
@@ -199,7 +199,7 @@ local StopCorner = Instance.new("UICorner")
 StopCorner.CornerRadius = UDim.new(0, 6)
 StopCorner.Parent = StopFollowBtn
 
--- Button Event Listeners
+-- Event Listeners
 ToggleBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
@@ -222,7 +222,6 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
--- Full Shutdown Helper
 local function destroyAllInstances()
     botEnabled = false
     if followConnection then
@@ -244,13 +243,14 @@ end
 
 CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- === AI API QUERY WITH STRICT SANITIZER ===
+-- === AI API QUERY (ADVANCED THINKING PURGER) ===
 local function queryAI(promptText, senderName)
     if not request then return "Executor missing request API!" end
 
     local payload = HttpService:JSONEncode({
         model = "openrouter/free",
         max_tokens = 40,
+        include_reasoning = false, -- Disables reasoning tokens at API layer
         messages = {
             { role = "system", content = Modes[currentModeIndex].Prompt },
             { role = "user", content = senderName .. ": " .. promptText }
@@ -274,12 +274,28 @@ local function queryAI(promptText, senderName)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
             if type(rawContent) == "string" and rawContent ~= "" then
-                -- STRIP ALL COGNITIVE / SYSTEM MONOLOGUE (DeepSeek <think> blocks, Markdown, Quotes)
+                -- 1. Strip XML tags <think>...</think>
                 rawContent = rawContent:gsub("<think>.-</think>", "")
+                
+                -- 2. Strip "Here's a thinking process:" preambles
+                if rawContent:find("Here's a thinking process") or rawContent:find("Analyze User Input") then
+                    -- Extract the last line or content after double newlines
+                    local lines = {}
+                    for line in rawContent:gmatch("[^\r\n]+") do
+                        table.insert(lines, line)
+                    end
+                    rawContent = lines[#lines] or ""
+                end
+
+                -- 3. Cleanup residual quotes, brackets, and spaces
                 rawContent = rawContent:gsub("%b[]", "")
                 rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
                 rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
-                return rawContent
+
+                -- Guarantee non-empty return
+                if rawContent ~= "" and not rawContent:find("Analyze") then
+                    return rawContent
+                end
             end
         end
     end
