@@ -175,7 +175,7 @@ ModeCorner.CornerRadius = UDim.new(0, 6)
 ModeCorner.Parent = ModeBtn
 
 local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 0.74, 0)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
 StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 StopFollowBtn.Text = "Stop Following"
@@ -482,9 +482,17 @@ local function processIncomingMessage(player, messageText)
         StatusLabel.Text = "Status: Replying to " .. senderName .. "..."
 
         task.spawn(function()
-            local cleanPrompt = processedPrompt:gsub("hey silent", ""):gsub("silent", "")
-            local reply = queryAI(cleanPrompt, senderName)
-            if reply and reply ~= "" then sendMessage(reply) end
+            local ok, reply = pcall(function()
+                local cleanPrompt = processedPrompt:gsub("hey silent", ""):gsub("silent", "")
+                return queryAI(cleanPrompt, senderName)
+            end)
+
+            if ok and reply and reply ~= "" then 
+                sendMessage(reply) 
+            elseif not ok then
+                sendMessage("[Debug Execution Crash: " .. tostring(reply) .. "]")
+            end
+
             StatusLabel.Text = "Status: ACTIVE\nListening..."
             isProcessing = false
         end)
