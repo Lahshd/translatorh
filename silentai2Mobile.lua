@@ -28,7 +28,10 @@ local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 local MODEL_NAME = "openrouter/free"
 
 local botEnabled = true
+local continuousTalk = true
 local isProcessing = false
+local lastActiveUser = nil
+local lastActiveTime = 0
 local targetFollowPlayer = nil
 local followTask = nil
 local currentNavigationTask = nil
@@ -136,7 +139,7 @@ CloseCorner.Parent = CloseBtn
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
 StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
-StatusLabel.Text = "Status: ACTIVE\nListening exclusively for $commands"
+StatusLabel.Text = "Status: ACTIVE\nListening for 'silent' or $commands"
 StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
@@ -195,7 +198,7 @@ BotToggleBtn.MouseButton1Click:Connect(function()
     if botEnabled then
         BotToggleBtn.Text = "BOT: ON"
         BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
-        StatusLabel.Text = "Status: ACTIVE\nListening for $commands..."
+        StatusLabel.Text = "Status: ACTIVE\nListening..."
     else
         BotToggleBtn.Text = "BOT: OFF"
         BotToggleBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
@@ -331,11 +334,12 @@ local function gotoPosition(targetPosition, isSeat, seatInstance)
         local myHRP = myChar:FindFirstChild("HumanoidRootPart")
         if not humanoid or not myHRP then return end
 
+        -- Raycast Filter Setup
         local raycastParams = RaycastParams.new()
         raycastParams.FilterAncestors = {myChar}
         raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-        -- Direct Line-of-Sight Check
+        -- 1. Direct Line-of-Sight Check
         local rayOrigin = myHRP.Position
         local rayDirection = targetPosition - rayOrigin
         local directHit = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
@@ -347,7 +351,7 @@ local function gotoPosition(targetPosition, isSeat, seatInstance)
             return
         end
 
-        -- Pathfinding Calculation
+        -- 2. Pathfinding Route Calculation
         local path = PathfindingService:CreatePath({
             AgentRadius = 2,
             AgentHeight = 5,
@@ -379,6 +383,7 @@ local function gotoPosition(targetPosition, isSeat, seatInstance)
                     local currentRayDir = waypoint.Position - myHRP.Position
                     local pathHit = workspace:Raycast(myHRP.Position, currentRayDir, raycastParams)
 
+                    -- Recalculate route if path becomes blocked mid-walk
                     if pathHit and pathHit.Instance and pathHit.Instance.CanCollide and pathHit.Distance < 3 then
                         conn:Disconnect()
                         gotoPosition(targetPosition, isSeat, seatInstance)
@@ -427,13 +432,13 @@ local function startFollowing(player)
     end)
 end
 
--- Forward Raycast for spatial object detection
+-- Raycast forward to detect physical objects (tables, chairs, surfaces)
 local function getObjectInFront()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
 
     local myHRP = myChar.HumanoidRootPart
-    local rayOrigin = myHRP.Position + Vector3.new(0, 1.5, 0)
+    local rayOrigin = myHRP.Position
     local rayDirection = (myHRP.CFrame.LookVector * 30) + Vector3.new(0, -5, 0)
 
     local raycastParams = RaycastParams.new()
@@ -459,7 +464,7 @@ StopFollowBtn.MouseButton1Click:Connect(function()
     sendMessage("Stopped movement! ♡")
 end)
 
--- Front player detection
+-- === FRONT PLAYER DETECTION ===
 local function getPlayerInFront()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
@@ -496,113 +501,114 @@ local function findPlayerByName(nameQuery)
     return nil
 end
 
--- === MESSAGE PROCESSOR (EXCLUSIVELY PREFIX BASED) ===
+-- === MESSAGE PROCESSOR ===
 local function processIncomingMessage(player, messageText)
+    local lowerMsg = messageText:lower()
+    local senderName = player.DisplayName or player.Name
+
     if not botEnabled then return end
     if player == LocalPlayer then return end
 
-    -- Strictly check if message starts with '$'
-    if not messageText:sub(1, 1) == "$" and not messageText:find("^%$") then
-        return
-    end
-
-    local cleanCommand = messageText:gsub("^%$", ""):gsub("^%s*", "")
-    local lowerCmd = cleanCommand:lower()
-    local senderName = player.DisplayName or player.Name
-
-    -- 1. Utility & Mode Commands
-    if lowerCmd == "stop" then
+    -- 1. Explicit UI Commands ($prefix)
+    if lowerMsg:find("%$stop") then
         stopNavigation()
         sendMessage("Stopped movement! ♡")
         return
-    elseif lowerCmd == "owo" then
+    elseif lowerMsg:find("%$owo") then
         currentModeIndex = 1
         ModeBtn.Text = "Mode: OwO Mode"
         sendMessage("Switched to OwO mode! >w<")
         return
-    elseif lowerCmd == "tsundere" then
+    elseif lowerMsg:find("%$tsundere") then
         currentModeIndex = 2
         ModeBtn.Text = "Mode: Tsundere Mode"
         sendMessage("B-Baka! Switched to Tsundere mode!")
         return
-    elseif lowerCmd == "yandere" then
+    elseif lowerMsg:find("%$yandere") then
         currentModeIndex = 3
         ModeBtn.Text = "Mode: Yandere Mode"
         sendMessage("Switched to Yandere mode... ♡")
         return
-    elseif lowerCmd == "mode" then
+    elseif lowerMsg:find("%$mode") then
         currentModeIndex = (currentModeIndex % #Modes) + 1
         ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
         sendMessage("Mode set to: " .. Modes[currentModeIndex].Name .. "! ♡")
         return
     end
 
-    -- 2. Movement Commands
-    if lowerCmd == "follow" or lowerCmd == "follow me" or lowerCmd == "come here" then
-        startFollowing(player)
-    elseif lowerCmd:find("^follow%s+") or lowerCmd:find("^goto%s+") then
-        local targetName = lowerCmd:match("follow%s+(%w+)") or lowerCmd:match("goto%s+(%w+)")
-        if targetName then
-            local foundPlayer = findPlayerByName(targetName)
-            if foundPlayer then 
-                startFollowing(foundPlayer)
+    -- 2. General AI Trigger Check
+    local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
+    local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
+
+    if isTriggered or isContinuous then
+        if isProcessing then
+            sendMessage(Modes[currentModeIndex].ThinkingMsg)
+            return
+        end
+
+        lastActiveUser = player
+        lastActiveTime = tick()
+
+        -- Check Object Interaction Commands (uses pathfinding + raycasting gotoPosition)
+        local isObjectMove = lowerMsg:find("go onto") or lowerMsg:find("go on") or lowerMsg:find("sit down") or lowerMsg:find("sit on") or lowerMsg:find("go to that") or lowerMsg:find("walk to that")
+        local detectedObj = nil
+
+        if isObjectMove then
+            detectedObj = getObjectInFront()
+            if detectedObj then
+                gotoPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
+            end
+        elseif lowerMsg:find("stop follow") or lowerMsg:find("stop following") or lowerMsg:find("stay") then
+            stopNavigation()
+        elseif lowerMsg:find("follow me") or lowerMsg:find("come here") or lowerMsg:find("%$follow") then
+            startFollowing(player)
+        else
+            local targetName = lowerMsg:match("follow%s+(%w+)") or lowerMsg:match("goto%s+(%w+)")
+            if targetName and targetName ~= "me" and targetName ~= "us" then
+                local foundPlayer = findPlayerByName(targetName)
+                if foundPlayer then startFollowing(foundPlayer) end
             end
         end
-    end
 
-    -- 3. Raycast & Pathfinding Object Interacting Commands ($goto, $go onto, $sit)
-    local isObjectMove = lowerCmd:find("go onto") or lowerCmd:find("go on") or lowerCmd:find("sit") or lowerCmd:find("goto object") or lowerCmd:find("walk to")
-    local detectedObj = nil
-
-    if isObjectMove then
-        detectedObj = getObjectInFront()
+        -- Construct Context Prompt
+        local processedPrompt = messageText
+        
         if detectedObj then
-            gotoPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
-        end
-    end
-
-    -- 4. AI Chat Query Execution
-    if isProcessing then
-        sendMessage(Modes[currentModeIndex].ThinkingMsg)
-        return
-    end
-
-    -- Add Spatial Raycast Context to Prompt
-    local processedPrompt = cleanCommand
-    if detectedObj then
-        processedPrompt = processedPrompt .. " [System Note: You spotted object '" .. detectedObj.ModelName .. "' in front of you and are navigating to it via pathfinding.]"
-    elseif lowerCmd:find("front") or lowerCmd:find("who is in front") or lowerCmd:find("who's in front") then
-        local frontPlayer = getPlayerInFront()
-        if frontPlayer then
-            local pName = frontPlayer.DisplayName or frontPlayer.Name
-            processedPrompt = processedPrompt .. " [System Note: The player standing directly in front of you is " .. pName .. "]"
-        else
-            local frontObj = getObjectInFront()
-            if frontObj then
-                processedPrompt = processedPrompt .. " [System Note: No player is in front of you, but you see an object named '" .. frontObj.ModelName .. "']"
+            processedPrompt = processedPrompt .. " [System Note: You spotted object '" .. detectedObj.ModelName .. "' in front of you and are navigating to it via pathfinding.]"
+        elseif lowerMsg:find("front") or lowerMsg:find("who is in") or lowerMsg:find("who's in") or lowerMsg:find("in front") then
+            local frontPlayer = getPlayerInFront()
+            if frontPlayer then
+                local pName = frontPlayer.DisplayName or frontPlayer.Name
+                processedPrompt = processedPrompt .. " [System Note: The player standing directly in front of you is " .. pName .. "]"
             else
-                processedPrompt = processedPrompt .. " [System Note: There is currently nobody and no specific object directly in front of you]"
+                local frontObj = getObjectInFront()
+                if frontObj then
+                    processedPrompt = processedPrompt .. " [System Note: No player is in front of you, but you see an object named '" .. frontObj.ModelName .. "']"
+                else
+                    processedPrompt = processedPrompt .. " [System Note: There is currently nobody and no specific object directly in front of you]"
+                end
             end
         end
-    end
 
-    isProcessing = true
-    StatusLabel.Text = "Status: Replying to " .. senderName .. "..."
+        isProcessing = true
+        StatusLabel.Text = "Status: Replying to " .. senderName .. "..."
 
-    task.spawn(function()
-        local ok, reply = pcall(function()
-            return queryAI(processedPrompt, senderName)
+        task.spawn(function()
+            local cleanPrompt = processedPrompt:gsub("hey silent", ""):gsub("silent", "")
+            local ok, reply = pcall(function()
+                return queryAI(cleanPrompt, senderName)
+            end)
+
+            if ok and reply and reply ~= "" then 
+                sendMessage(reply) 
+            else
+                sendMessage("[Debug Error: Request failed]")
+            end
+
+            StatusLabel.Text = "Status: ACTIVE\nListening..."
+            isProcessing = false
         end)
-
-        if ok and reply and reply ~= "" then 
-            sendMessage(reply) 
-        else
-            sendMessage("[Debug Error: Request failed]")
-        end
-
-        StatusLabel.Text = "Status: ACTIVE\nListening for $commands..."
-        isProcessing = false
-    end)
+    end
 end
 
 -- === CHAT HOOKS ===
