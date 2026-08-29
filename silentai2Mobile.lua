@@ -25,7 +25,7 @@ end)
 -- Configuration & State
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-local MODEL_NAME = "minimax/minimax-m2.7:free"
+local MODEL_NAME = "openrouter:free"
 
 local botEnabled = true
 local continuousTalk = true
