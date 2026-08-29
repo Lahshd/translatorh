@@ -2,7 +2,6 @@
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Mobile polling loop to prevent infinite hanging
 while not LocalPlayer do
     task.wait(0.1)
     LocalPlayer = Players.LocalPlayer
@@ -13,10 +12,8 @@ local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
--- Executor HTTP Request Resolver
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
--- Cleanup pre-existing UI instances
 pcall(function()
     for _, child in ipairs(PlayerGui:GetChildren()) do
         if child.Name == "SilentAIBotNative" then
@@ -28,7 +25,7 @@ end)
 -- Configuration & State
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-local MODEL_NAME = "meta-llama/llama-3.3-70b-instruct:free"
+local MODEL_NAME = "google/gemini-2.5-flash:free"
 
 local botEnabled = true
 local continuousTalk = true
@@ -36,27 +33,26 @@ local isProcessing = false
 local lastActiveUser = nil
 local lastActiveTime = 0
 local targetFollowPlayer = nil
-local followConnection = nil
+local followTask = nil
 local chatConnections = {}
 
--- Strict directive enforced across all modes
-local STRICT_RULE = " CRITICAL: Output ONLY your spoken in-character dialogue line. Do NOT output analysis, thought processes, system notes, or meta text. Speak in 10 words or less."
+local STRICT_RULE = " Answer ONLY with the raw character reply text. Never output thinking, system notes, or preambles."
 
 local currentModeIndex = 1
 local Modes = {
     {
         Name = "OwO Mode", 
-        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters." .. STRICT_RULE,
+        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Under 12 words." .. STRICT_RULE,
         ThinkingMsg = "H-Hold on, my brain is processing so many things >w<!"
     },
     {
         Name = "Tsundere Mode", 
-        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass." .. STRICT_RULE,
+        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Under 12 words." .. STRICT_RULE,
         ThinkingMsg = "B-Baka! Don't rush me, I'm already thinking!"
     },
     {
         Name = "Yandere Mode", 
-        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats." .. STRICT_RULE,
+        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Under 12 words." .. STRICT_RULE,
         ThinkingMsg = "Wait your turn... my mind is busy right now~ ♡"
     }
 }
@@ -85,7 +81,6 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = PlayerGui
 
--- Toggle Button (Floating)
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0, 45, 0, 45)
 ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
@@ -99,7 +94,6 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(1, 0)
 ToggleCorner.Parent = ToggleBtn
 
--- Main Control Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 240, 0, 200)
 MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
@@ -113,7 +107,6 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
--- Title Bar
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
@@ -128,7 +121,6 @@ local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = TitleLabel
 
--- Close Button
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 24, 0, 24)
 CloseBtn.Position = UDim2.new(1, -27, 0, 3)
@@ -143,7 +135,6 @@ local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 6)
 CloseCorner.Parent = CloseBtn
 
--- Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
 StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
@@ -155,7 +146,6 @@ StatusLabel.TextSize = 11
 StatusLabel.TextWrapped = true
 StatusLabel.Parent = MainFrame
 
--- Bot Toggle Button
 local BotToggleBtn = Instance.new("TextButton")
 BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
 BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
@@ -170,7 +160,6 @@ local BotCorner = Instance.new("UICorner")
 BotCorner.CornerRadius = UDim.new(0, 6)
 BotCorner.Parent = BotToggleBtn
 
--- Mode Swap Button
 local ModeBtn = Instance.new("TextButton")
 ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
 ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
@@ -185,7 +174,6 @@ local ModeCorner = Instance.new("UICorner")
 ModeCorner.CornerRadius = UDim.new(0, 6)
 ModeCorner.Parent = ModeBtn
 
--- Stop Follow Button
 local StopFollowBtn = Instance.new("TextButton")
 StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
@@ -200,7 +188,6 @@ local StopCorner = Instance.new("UICorner")
 StopCorner.CornerRadius = UDim.new(0, 6)
 StopCorner.Parent = StopFollowBtn
 
--- Event Listeners
 ToggleBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
@@ -223,12 +210,17 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
+local function stopFollowing()
+    targetFollowPlayer = nil
+    if followTask then
+        task.cancel(followTask)
+        followTask = nil
+    end
+end
+
 local function destroyAllInstances()
     botEnabled = false
-    if followConnection then
-        followConnection:Disconnect()
-        followConnection = nil
-    end
+    stopFollowing()
     for _, conn in ipairs(chatConnections) do
         if conn then conn:Disconnect() end
     end
@@ -244,14 +236,13 @@ end
 
 CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- === AI API QUERY (INSTRUCT MODEL + PARSER) ===
+-- === AI API QUERY ===
 local function queryAI(promptText, senderName)
     if not request then return "Executor missing request API!" end
 
     local payload = HttpService:JSONEncode({
         model = MODEL_NAME,
-        max_tokens = 50,
-        temperature = 0.7,
+        max_tokens = 100,
         messages = {
             { role = "system", content = Modes[currentModeIndex].Prompt },
             { role = "user", content = senderName .. ": " .. promptText }
@@ -275,24 +266,19 @@ local function queryAI(promptText, senderName)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
             if type(rawContent) == "string" and rawContent ~= "" then
-                
-                -- Strip explicit XML reasoning tags
                 rawContent = rawContent:gsub("<think>.-</think>", "")
-
-                -- Strip internal preamble structures if present
-                if rawContent:find("Okay,") or rawContent:find("Analyze") or rawContent:find("user is asking") then
-                    local lines = {}
-                    for line in rawContent:gmatch("[^\r\n]+") do
-                        if not line:find("^Okay,") and not line:find("Analyze") and not line:find("user is asking") then
-                            table.insert(lines, line)
-                        end
-                    end
-                    if #lines > 0 then
-                        rawContent = lines[#lines]
+                
+                local cleanLines = {}
+                for line in rawContent:gmatch("[^\r\n]+") do
+                    if not line:find("Okay,") and not line:find("Analyze") and not line:find("user is asking") and not line:find("thinking process") then
+                        table.insert(cleanLines, line)
                     end
                 end
 
-                -- Clean quotes, bracketed notes, and outer whitespace
+                if #cleanLines > 0 then
+                    rawContent = cleanLines[#cleanLines]
+                end
+
                 rawContent = rawContent:gsub("%b[]", "")
                 rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
                 rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
@@ -304,39 +290,36 @@ local function queryAI(promptText, senderName)
         end
     end
 
-    return "N-No response... try asking again! >w<"
+    return Modes[currentModeIndex].ThinkingMsg
 end
 
--- === NAVIGATION CONTROLS ===
+-- === FIXED NAVIGATION CONTROLS ===
 local function startFollowing(player)
+    stopFollowing()
     targetFollowPlayer = player
-    if followConnection then followConnection:Disconnect() end
 
-    followConnection = RunService.Heartbeat:Connect(function()
-        if not targetFollowPlayer or not targetFollowPlayer.Character then return end
-        local myChar = LocalPlayer.Character
-        local targetChar = targetFollowPlayer.Character
+    followTask = task.spawn(function()
+        while targetFollowPlayer == player do
+            pcall(function()
+                local myChar = LocalPlayer.Character
+                local targetChar = targetFollowPlayer.Character
 
-        if myChar and targetChar then
-            local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-            local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
-            local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                if myChar and targetChar then
+                    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+                    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+                    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
 
-            if humanoid and targetHRP and myHRP then
-                if (myHRP.Position - targetHRP.Position).Magnitude > 7 then
-                    humanoid:MoveTo(targetHRP.Position)
+                    if humanoid and targetHRP and myHRP then
+                        local dist = (myHRP.Position - targetHRP.Position).Magnitude
+                        if dist > 6 then
+                            humanoid:MoveTo(targetHRP.Position)
+                        end
+                    end
                 end
-            end
+            end)
+            task.wait(0.2)
         end
     end)
-end
-
-local function stopFollowing()
-    targetFollowPlayer = nil
-    if followConnection then
-        followConnection:Disconnect()
-        followConnection = nil
-    end
 end
 
 StopFollowBtn.MouseButton1Click:Connect(function()
@@ -371,7 +354,6 @@ local function getPlayerInFront()
     return closestPlayer
 end
 
--- === TARGET SEARCH ===
 local function findPlayerByName(nameQuery)
     local query = nameQuery:lower()
     for _, p in ipairs(Players:GetPlayers()) do
@@ -387,7 +369,6 @@ local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
 
-    -- Direct Chat Commands ($prefix)
     if lowerMsg:find("%$stop") then
         stopFollowing()
         sendMessage("Stopped following! ♡")
@@ -437,7 +418,6 @@ local function processIncomingMessage(player, messageText)
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
     if isTriggered or isContinuous then
-        -- Multi-user busy detection
         if isProcessing then
             sendMessage(Modes[currentModeIndex].ThinkingMsg)
             return
@@ -446,7 +426,6 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- GOTO TARGET (Natural Language)
         if lowerMsg:find("goto") or lowerMsg:find("go to") then
             local targetName = lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("go to%s+(%w+)")
             if targetName then
@@ -462,7 +441,6 @@ local function processIncomingMessage(player, messageText)
             end
         end
 
-        -- FOLLOW / STOP (Natural Language)
         if lowerMsg:find("follow me") or lowerMsg:find("come here") or (lowerMsg:find("follow") and not lowerMsg:find("stop")) then
             sendMessage("Coming to you, " .. senderName .. "! ♡")
             startFollowing(player)
@@ -473,7 +451,6 @@ local function processIncomingMessage(player, messageText)
             return
         end
 
-        -- FRONT PLAYER CONTEXT EVALUATION
         local processedPrompt = messageText
         if lowerMsg:find("person in front") or lowerMsg:find("person infront") or lowerMsg:find("guy in front") then
             local frontPlayer = getPlayerInFront()
