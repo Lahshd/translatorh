@@ -8,13 +8,11 @@ local RunService = game:GetService("RunService")
 -- HTTP Request Handler (Mobile & PC Compatibility)
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
 
--- Load Rayfield Safely
-local RayfieldSuccess, Rayfield = pcall(function()
-    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-end)
+-- Load Orion Library
+local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
 
-if not RayfieldSuccess or not Rayfield then
-    warn("Failed to load Rayfield UI Library!")
+if not OrionLib then
+    warn("Failed to load Orion UI Library!")
     return
 end
 
@@ -37,64 +35,65 @@ local SystemPrompts = {
     ["Yandere Mode"] = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies under 12 words."
 }
 
--- === RAYFIELD INTERFACE ===
-local Window = Rayfield:CreateWindow({
-   Name = "🌸 Silent AI & Navigation",
-   LoadingTitle = "Silent AI Loading...",
-   LoadingSubtitle = "Rayfield Cross-Platform Edition",
-   ConfigurationSaving = { Enabled = false },
-   KeySystem = false
+-- === ORION INTERFACE ===
+local Window = OrionLib:MakeWindow({
+    Name = "🌸 Silent AI & Navigation",
+    HidePremium = true,
+    SaveConfig = false,
+    IntroText = "Silent AI Mobile",
+    ConfigFolder = "SilentAI"
 })
 
-local MainTab = Window:CreateTab("Control Hub", 4483362458)
-
-local StatusParagraph = MainTab:CreateParagraph({
-    Title = "Bot Status", 
-    Content = "Active | Listening for 'silent' or 'hey silent'"
+local MainTab = Window:MakeTab({
+    Name = "Control Hub",
+    Icon = "rbxassetid://4483362458",
+    PremiumOnly = false
 })
 
-MainTab:CreateToggle({
-   Name = "Enable Silent AI",
-   CurrentValue = true,
-   Callback = function(Value)
-      botEnabled = Value
-      StatusParagraph:Set({
-          Title = "Bot Status", 
-          Content = botEnabled and "Active | Listening..." or "Inactive"
-      })
-   end,
+MainTab:AddToggle({
+    Name = "Enable Silent AI",
+    Default = true,
+    Callback = function(Value)
+        botEnabled = Value
+    end    
 })
 
-MainTab:CreateToggle({
-   Name = "Continuous Talk Mode",
-   CurrentValue = true,
-   Callback = function(Value)
-      continuousTalk = Value
-      if not Value then lastActiveUser = nil end
-   end,
+MainTab:AddToggle({
+    Name = "Continuous Talk Mode",
+    Default = true,
+    Callback = function(Value)
+        continuousTalk = Value
+        if not Value then lastActiveUser = nil end
+    end    
 })
 
-MainTab:CreateDropdown({
-   Name = "Personality Mode",
-   Options = {"OwO Mode", "Tsundere Mode", "Yandere Mode"},
-   CurrentOption = {"OwO Mode"},
-   MultipleOptions = false,
-   Callback = function(Option)
-      currentMode = Option[1]
-   end,
+MainTab:AddDropdown({
+    Name = "Personality Mode",
+    Default = "OwO Mode",
+    Options = {"OwO Mode", "Tsundere Mode", "Yandere Mode"},
+    Callback = function(Option)
+        currentMode = Option
+    end
 })
 
-MainTab:CreateButton({
-   Name = "Stop Following",
-   Callback = function()
-      targetFollowPlayer = nil
-      if followConnection then
-          followConnection:Disconnect()
-          followConnection = nil
-      end
-      StatusParagraph:Set({Title = "Navigation", Content = "Stopped following player."})
-   end,
+MainTab:AddButton({
+    Name = "Stop Following",
+    Callback = function()
+        targetFollowPlayer = nil
+        if followConnection then
+            followConnection:Disconnect()
+            followConnection = nil
+        end
+        OrionLib:MakeNotification({
+            Name = "Navigation",
+            Content = "Stopped following player.",
+            Time = 3
+        })
+    end
 })
+
+-- Initialize UI
+OrionLib:Init()
 
 -- === CHAT SENDER ===
 local function sendMessage(msg)
@@ -110,7 +109,7 @@ local function sendMessage(msg)
     end)
 end
 
--- === SAFE API QUERY (NIL SAFEGUARD INTEGRATED) ===
+-- === SAFE API QUERY ===
 local function queryAI(promptText, senderName)
     if not request then return "Executor missing request function!" end
 
@@ -148,7 +147,7 @@ local function queryAI(promptText, senderName)
     return "B-Baka! AI timed out... ♡"
 end
 
--- === STABLE DIRECT NAVIGATION (MOBILE & PC) ===
+-- === STABLE DIRECT NAVIGATION ===
 local function startFollowing(player)
     targetFollowPlayer = player
     if followConnection then followConnection:Disconnect() end
@@ -203,13 +202,11 @@ local function processIncomingMessage(player, messageText)
         end
 
         isProcessing = true
-        StatusParagraph:Set({Title = "Bot Status", Content = "Generating reply for " .. senderName .. "..."})
 
         task.spawn(function()
             local cleanPrompt = messageText:gsub("hey silent", ""):gsub("silent", "")
             local reply = queryAI(cleanPrompt, senderName)
             if reply then sendMessage(reply) end
-            StatusParagraph:Set({Title = "Bot Status", Content = "Active | Listening..."})
             isProcessing = false
         end)
     end
