@@ -353,7 +353,7 @@ ModeCorner.CornerRadius = UDim.new(0, 6)
 ModeCorner.Parent = ModeBtn
 
 local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 0.30)
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
 StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 StopFollowBtn.Text = "Stop Movement"
@@ -437,7 +437,7 @@ local function processIncomingMessage(player, messageText)
     if not botEnabled then return end
 
     local lowerMsg = messageText:lower()
-    local senderName = player.DisplayName or player.Name
+    local senderName = player and (player.DisplayName or player.Name) or "User"
 
     -- 1. Explicit Prefixed Commands
     if lowerMsg:find("$stop") then 
@@ -468,7 +468,7 @@ local function processIncomingMessage(player, messageText)
     end
 
     if lowerMsg:find("$follow") then 
-        startFollowingDynamic(player) 
+        if player then startFollowingDynamic(player) end
         sendMessage("Following you! ♡") 
         return 
     end
@@ -477,7 +477,7 @@ local function processIncomingMessage(player, messageText)
     local dynamicActionExecuted = false
 
     if lowerMsg:find("come to me") or lowerMsg:find("come here") or lowerMsg:find("follow me") or lowerMsg:find("come") then
-        startFollowingDynamic(player)
+        if player then startFollowingDynamic(player) end
         dynamicActionExecuted = true
     elseif lowerMsg:find("go onto") or lowerMsg:find("go on") or lowerMsg:find("sit down") or lowerMsg:find("sit on") or lowerMsg:find("go to that") then
         local obj = detectedObjectCache or performDynamicRaycast()
@@ -530,24 +530,43 @@ local function processIncomingMessage(player, messageText)
 end
 
 -- === CHAT HOOKS ===
+local function hookPlayerChat(player)
+    local conn = player.Chatted:Connect(function(msg)
+        processIncomingMessage(player, msg)
+    end)
+    table.insert(chatConnections, conn)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    hookPlayerChat(p)
+end
+table.insert(chatConnections, Players.PlayerAdded:Connect(hookPlayerChat))
+
 pcall(function()
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
         local c = TextChatService.MessageReceived:Connect(function(textChatMessage)
-            if textChatMessage and textChatMessage.TextSource then
-                local player = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
-                if player then processIncomingMessage(player, textChatMessage.Text) end
+            if not textChatMessage then return end
+
+            local senderPlayer = nil
+
+            if textChatMessage.TextSource then
+                senderPlayer = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
             end
+
+            if not senderPlayer and textChatMessage.PrefixText ~= "" then
+                local cleanPrefix = textChatMessage.PrefixText:gsub("%s*:%s*$", ""):gsub("^%s*", "")
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Name == cleanPrefix or p.DisplayName == cleanPrefix then
+                        senderPlayer = p
+                        break
+                    end
+                end
+            end
+
+            senderPlayer = senderPlayer or LocalPlayer
+
+            processIncomingMessage(senderPlayer, textChatMessage.Text)
         end)
         table.insert(chatConnections, c)
-    else
-        for _, p in ipairs(Players:GetPlayers()) do
-            local c = p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
-            table.insert(chatConnections, c)
-        end
-        local c2 = Players.PlayerAdded:Connect(function(p)
-            local c = p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
-            table.insert(chatConnections, c2)
-        end)
-        table.insert(chatConnections, c2)
     end
 end)
