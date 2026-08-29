@@ -38,21 +38,24 @@ local targetFollowPlayer = nil
 local followConnection = nil
 local chatConnections = {}
 
+-- Mandatory system rule enforced across all modes to ban reasoning/thoughts output
+local STRICT_RULE = " CRITICAL DIRECTIVE: Output ONLY your direct spoken dialogue line. Under NO circumstance output reasoning, thinking process, system notes, internal thoughts, or meta text. Do NOT wrap output in codeblocks or quotes."
+
 local currentModeIndex = 1
 local Modes = {
     {
         Name = "OwO Mode", 
-        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies under 12 words.",
+        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies strictly under 12 words." .. STRICT_RULE,
         ThinkingMsg = "H-Hold on, my brain is processing so many things >w<!"
     },
     {
         Name = "Tsundere Mode", 
-        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies under 12 words.",
+        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies strictly under 12 words." .. STRICT_RULE,
         ThinkingMsg = "B-Baka! Don't rush me, I'm already thinking!"
     },
     {
         Name = "Yandere Mode", 
-        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies under 12 words.",
+        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies strictly under 12 words." .. STRICT_RULE,
         ThinkingMsg = "Wait your turn... my mind is busy right now~ ♡"
     }
 }
@@ -241,7 +244,7 @@ end
 
 CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- === AI API QUERY ===
+-- === AI API QUERY WITH STRICT SANITIZER ===
 local function queryAI(promptText, senderName)
     if not request then return "Executor missing request API!" end
 
@@ -271,7 +274,12 @@ local function queryAI(promptText, senderName)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
             if type(rawContent) == "string" and rawContent ~= "" then
-                return rawContent:gsub('^"', ''):gsub('"$', '')
+                -- STRIP ALL COGNITIVE / SYSTEM MONOLOGUE (DeepSeek <think> blocks, Markdown, Quotes)
+                rawContent = rawContent:gsub("<think>.-</think>", "")
+                rawContent = rawContent:gsub("%b[]", "")
+                rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
+                rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
+                return rawContent
             end
         end
     end
@@ -463,7 +471,7 @@ local function processIncomingMessage(player, messageText)
         task.spawn(function()
             local cleanPrompt = processedPrompt:gsub("hey silent", ""):gsub("silent", "")
             local reply = queryAI(cleanPrompt, senderName)
-            if reply then sendMessage(reply) end
+            if reply and reply ~= "" then sendMessage(reply) end
             StatusLabel.Text = "Status: ACTIVE\nListening..."
             isProcessing = false
         end)
