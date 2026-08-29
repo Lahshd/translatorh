@@ -22,10 +22,13 @@ pcall(function()
     end
 end)
 
--- Configuration & State
+-- Configuration & Constants
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 local MODEL_NAME = "openrouter/free"
+
+local WALK_SPEED = 15
+local RUN_SPEED = 33
 
 local botEnabled = true
 local continuousTalk = true
@@ -222,12 +225,34 @@ local function stopMovement()
         task.cancel(activePathTask)
         activePathTask = nil
     end
+    local myChar = LocalPlayer.Character
+    if myChar then
+        local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.WalkSpeed = WALK_SPEED end
+    end
 end
 
 StopFollowBtn.MouseButton1Click:Connect(function()
     stopMovement()
     sendMessage("Stopped following! ♡")
 end)
+
+local function updateBotSpeed(botHumanoid, targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then 
+        botHumanoid.WalkSpeed = WALK_SPEED
+        return 
+    end
+
+    local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if targetHumanoid and botHumanoid then
+        local isSprinting = targetHumanoid.MoveDirection.Magnitude > 0 and targetHumanoid.WalkSpeed > 18
+        if isSprinting then
+            botHumanoid.WalkSpeed = RUN_SPEED
+        else
+            botHumanoid.WalkSpeed = WALK_SPEED
+        end
+    end
+end
 
 local function startFollowingPlayer(targetPlayer)
     stopMovement()
@@ -243,9 +268,11 @@ local function startFollowingPlayer(targetPlayer)
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
         if not myHRP or not humanoid then return end
 
+        updateBotSpeed(humanoid, followingPlayer)
+
         local distance = (myHRP.Position - targetHRP.Position).Magnitude
         if distance > 6 then
-            if tick() - lastPathCompute > 0.5 then
+            if tick() - lastPathCompute > 0.4 then
                 lastPathCompute = tick()
                 humanoid:MoveTo(targetHRP.Position)
             end
@@ -264,6 +291,8 @@ local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
         local myHRP = myChar:FindFirstChild("HumanoidRootPart")
         if not humanoid or not myHRP then return end
+
+        humanoid.WalkSpeed = WALK_SPEED
 
         local path = PathfindingService:CreatePath({
             AgentRadius = 3,
@@ -287,6 +316,8 @@ local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
             end
 
             if isSeat and seatInstance then
+                humanoid:MoveTo(seatInstance.Position)
+                humanoid.MoveToFinished:Wait()
                 seatInstance:Sit(humanoid)
             elseif targetTool and targetTool:IsA("Tool") then
                 humanoid:EquipTool(targetTool)
@@ -297,7 +328,25 @@ local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
     end)
 end
 
--- === ITEM INTERACTION ENGINE ===
+-- === INVENTORY INTERACTION ENGINE ===
+local function getInventoryItems()
+    local tools = {}
+    local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+    local myChar = LocalPlayer.Character
+
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then table.insert(tools, item.Name) end
+        end
+    end
+    if myChar then
+        for _, item in ipairs(myChar:GetChildren()) do
+            if item:IsA("Tool") then table.insert(tools, item.Name .. " (Equipped)") end
+        end
+    end
+    return tools
+end
+
 local function equipItemByName(itemName)
     local myChar = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
@@ -309,6 +358,11 @@ local function equipItemByName(itemName)
     for _, tool in ipairs(backpack:GetChildren()) do
         if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
             humanoid:EquipTool(tool)
+            return true, tool.Name
+        end
+    end
+    for _, tool in ipairs(myChar:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
             return true, tool.Name
         end
     end
@@ -330,10 +384,15 @@ end
 local function inspectSpeakerContext(speakerPlayer)
     local details = {}
     
+    local invList = getInventoryItems()
+    if #invList > 0 then
+        table.insert(details, "Bot Inventory: " .. table.concat(invList, ", "))
+    else
+        table.insert(details, "Bot Inventory: Empty")
+    end
+
     if speakerPlayer and speakerPlayer.Character then
         local char = speakerPlayer.Character
-        
-        -- Held Tools
         local heldTool = char:FindFirstChildOfClass("Tool")
         if heldTool then
             table.insert(details, "Speaker is holding: " .. heldTool.Name)
@@ -341,13 +400,6 @@ local function inspectSpeakerContext(speakerPlayer)
             table.insert(details, "Speaker is holding nothing")
         end
         
-        -- Shirt Text / Decals
-        local shirt = char:FindFirstChildOfClass("Shirt")
-        if shirt then
-            table.insert(details, "Shirt Asset ID: " .. tostring(shirt.ShirtTemplate))
-        end
-        
-        -- Scanning nearby surface text / wall decals / stop signs
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if hrp then
             for _, obj in ipairs(workspace:GetDescendants()) do
@@ -355,9 +407,7 @@ local function inspectSpeakerContext(speakerPlayer)
                     local part = obj:FindFirstAncestorWhichIsA("BasePart")
                     if part and (part.Position - hrp.Position).Magnitude < 15 then
                         if obj:IsA("TextLabel") and obj.Text ~= "" then
-                            table.insert(details, "Nearby text on '" .. part.Name .. "': '" .. obj.Text .. "'")
-                        elseif obj:IsA("Decal") then
-                            table.insert(details, "Nearby decal object: " .. part.Name)
+                            table.insert(details, "Wall Text on '" .. part.Name .. "': '" .. obj.Text .. "'")
                         end
                     end
                 end
@@ -386,7 +436,7 @@ local function findObjectByKeywords(speakerPlayer, textPrompt)
     local lowerPrompt = textPrompt:lower()
 
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Tool") then
+        if obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Tool") or obj:IsA("Seat") or obj:IsA("VehicleSeat") then
             local objName = obj.Name:lower()
             if objName:len() > 2 and lowerPrompt:find(objName) then
                 local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
@@ -397,7 +447,7 @@ local function findObjectByKeywords(speakerPlayer, textPrompt)
                         closestObj = {
                             Instance = obj,
                             ModelName = obj.Name,
-                            Position = part.Position - (part.CFrame.LookVector * 2), -- Offset to prevent walking directly into wall centers
+                            Position = part.Position - (part.CFrame.LookVector * 2),
                             IsSeat = obj:IsA("Seat") or obj:IsA("VehicleSeat"),
                             IsTool = obj:IsA("Tool")
                         }
@@ -502,22 +552,22 @@ local function processIncomingMessage(player, messageText)
 
     if not botEnabled or player == LocalPlayer then return end
 
-    -- Mode Commands
+    -- Mode Commands ($ prefixes & keyword matches)
     if lowerMsg:find("%$stop") then
         stopMovement()
         sendMessage("Stopped following! ♡")
         return
-    elseif lowerMsg:find("%$owo") then
+    elseif lowerMsg:find("%$owo") or lowerMsg:find("%$mode owo") then
         currentModeIndex = 1
         ModeBtn.Text = "Mode: OwO Mode"
         sendMessage("Switched to OwO mode! >w<")
         return
-    elseif lowerMsg:find("%$tsundere") then
+    elseif lowerMsg:find("%$tsundere") or lowerMsg:find("%$mode tsundere") then
         currentModeIndex = 2
         ModeBtn.Text = "Mode: Tsundere Mode"
         sendMessage("B-Baka! Switched to Tsundere mode!")
         return
-    elseif lowerMsg:find("%$yandere") then
+    elseif lowerMsg:find("%$yandere") or lowerMsg:find("%$mode yandere") then
         currentModeIndex = 3
         ModeBtn.Text = "Mode: Yandere Mode"
         sendMessage("Switched to Yandere mode... ♡")
@@ -537,7 +587,7 @@ local function processIncomingMessage(player, messageText)
         lastActiveTime = tick()
 
         -- Item Command Triggers
-        local takeItem = lowerMsg:match("take out the%s+(.+)") or lowerMsg:match("equip the%s+(.+)") or lowerMsg:match("hold the%s+(.+)")
+        local takeItem = lowerMsg:match("take out the%s+(.+)") or lowerMsg:match("equip the%s+(.+)") or lowerMsg:match("hold the%s+(.+)") or lowerMsg:match("take out (%w+)")
         local useItem = lowerMsg:find("use the") or lowerMsg:find("activate tool") or lowerMsg:find("swing")
 
         if takeItem then
@@ -589,7 +639,7 @@ local function processIncomingMessage(player, messageText)
         StatusLabel.Text = "Status: Replying to " .. senderName .. "..."
 
         task.spawn(function()
-            local cleanPrompt = processedPrompt or messageText:gsub("hey silent", ""):gsub("silent", "")
+            local cleanPrompt = messageText:gsub("hey silent", ""):gsub("silent", "")
             local reply = queryAI(cleanPrompt, senderName, contextInfo)
 
             if reply and reply ~= "" then 
