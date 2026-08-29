@@ -28,6 +28,7 @@ end)
 -- Configuration & State
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+local MODEL_NAME = "meta-llama/llama-3.3-70b-instruct:free"
 
 local botEnabled = true
 local continuousTalk = true
@@ -38,8 +39,8 @@ local targetFollowPlayer = nil
 local followConnection = nil
 local chatConnections = {}
 
--- Strict prompt parameters
-local STRICT_RULE = " Speak ONLY in-character dialogue. Absolutely NO thought processes, NO analysis, NO chain of thought, NO internal notes. Respond in 10 words or less."
+-- Strict directive enforced across all modes
+local STRICT_RULE = " CRITICAL: Output ONLY your spoken in-character dialogue line. Do NOT output analysis, thought processes, system notes, or meta text. Speak in 10 words or less."
 
 local currentModeIndex = 1
 local Modes = {
@@ -243,14 +244,14 @@ end
 
 CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- === AI API QUERY (ADVANCED THINKING PURGER) ===
+-- === AI API QUERY (INSTRUCT MODEL + PARSER) ===
 local function queryAI(promptText, senderName)
     if not request then return "Executor missing request API!" end
 
     local payload = HttpService:JSONEncode({
-        model = "openrouter/free",
-        max_tokens = 40,
-        include_reasoning = false, -- Disables reasoning tokens at API layer
+        model = MODEL_NAME,
+        max_tokens = 50,
+        temperature = 0.7,
         messages = {
             { role = "system", content = Modes[currentModeIndex].Prompt },
             { role = "user", content = senderName .. ": " .. promptText }
@@ -274,33 +275,36 @@ local function queryAI(promptText, senderName)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
             if type(rawContent) == "string" and rawContent ~= "" then
-                -- 1. Strip XML tags <think>...</think>
-                rawContent = rawContent:gsub("<think>.-</think>", "")
                 
-                -- 2. Strip "Here's a thinking process:" preambles
-                if rawContent:find("Here's a thinking process") or rawContent:find("Analyze User Input") then
-                    -- Extract the last line or content after double newlines
+                -- Strip explicit XML reasoning tags
+                rawContent = rawContent:gsub("<think>.-</think>", "")
+
+                -- Strip internal preamble structures if present
+                if rawContent:find("Okay,") or rawContent:find("Analyze") or rawContent:find("user is asking") then
                     local lines = {}
                     for line in rawContent:gmatch("[^\r\n]+") do
-                        table.insert(lines, line)
+                        if not line:find("^Okay,") and not line:find("Analyze") and not line:find("user is asking") then
+                            table.insert(lines, line)
+                        end
                     end
-                    rawContent = lines[#lines] or ""
+                    if #lines > 0 then
+                        rawContent = lines[#lines]
+                    end
                 end
 
-                -- 3. Cleanup residual quotes, brackets, and spaces
+                -- Clean quotes, bracketed notes, and outer whitespace
                 rawContent = rawContent:gsub("%b[]", "")
                 rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
                 rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
 
-                -- Guarantee non-empty return
-                if rawContent ~= "" and not rawContent:find("Analyze") then
+                if rawContent ~= "" then
                     return rawContent
                 end
             end
         end
     end
 
-    return "B-Baka! AI timed out... ♡"
+    return "N-No response... try asking again! >w<"
 end
 
 -- === NAVIGATION CONTROLS ===
