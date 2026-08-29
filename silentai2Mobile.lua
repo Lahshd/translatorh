@@ -9,7 +9,7 @@ local RunService = game:GetService("RunService")
 -- HTTP Request Handler
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
 
--- === CLEANUP PREEXISTING INSTANCES (SAFE PLAYERGUI ONLY) ===
+-- === CLEANUP PREEXISTING INSTANCES ===
 pcall(function()
     for _, child in ipairs(PlayerGui:GetChildren()) do
         if child.Name == "SilentAIBotNative" then
@@ -23,6 +23,7 @@ local OPENROUTER_API_KEY = "sk-or-v1-f380ea532c7e0e9456210eb841110ce25ce0d8fec53
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 local botEnabled = true
+local debugMode = false
 local continuousTalk = true
 local isProcessing = false
 local lastActiveUser = nil
@@ -33,10 +34,49 @@ local chatConnections = {}
 
 local currentModeIndex = 1
 local Modes = {
-    {Name = "OwO Mode", Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies under 12 words."},
-    {Name = "Tsundere Mode", Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies under 12 words."},
-    {Name = "Yandere Mode", Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies under 12 words."}
+    {
+        Name = "OwO Mode", 
+        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies under 12 words.",
+        ThinkingMsg = "H-Hold on, my brain is processing so many things >w<!"
+    },
+    {
+        Name = "Tsundere Mode", 
+        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies under 12 words.",
+        ThinkingMsg = "B-Baka! Don't rush me, I'm already thinking!"
+    },
+    {
+        Name = "Yandere Mode", 
+        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies under 12 words.",
+        ThinkingMsg = "Wait your turn... my mind is busy right now~ ♡"
+    }
 }
+
+-- === CHAT SENDER ===
+local function sendMessage(msg)
+    if not msg or msg == "" then return end
+    pcall(function()
+        local textChannels = TextChatService:FindFirstChild("TextChannels")
+        if textChannels then
+            local general = textChannels:FindFirstChild("RBXGeneral")
+            if general then
+                general:SendAsync(msg)
+                return
+            end
+        end
+        local sayRemote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
+        if sayRemote then sayRemote:FireServer(msg, "All") end
+    end)
+end
+
+-- === DEBUG LOGGER ===
+local function debugLog(txt)
+    print("--SILENTAI " .. txt .. "--")
+    if debugMode then
+        sendMessage("--SILENTAI " .. txt .. "--")
+    end
+end
+
+debugLog("STARTING INITIALIZATION")
 
 -- === PURE NATIVE GUI ENGINE ===
 local ScreenGui = Instance.new("ScreenGui")
@@ -45,7 +85,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = PlayerGui
 
--- Toggle Button (Floating Icon)
+-- Toggle Button
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0, 45, 0, 45)
 ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
@@ -59,9 +99,9 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(1, 0)
 ToggleCorner.Parent = ToggleBtn
 
--- Main Control Frame
+-- Main Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 240, 0, 200)
+MainFrame.Size = UDim2.new(0, 240, 0, 235)
 MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
 MainFrame.Visible = true
@@ -73,14 +113,14 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
--- Title Banner
+-- Title
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "  🌸 Silent AI & Navigation"
+TitleLabel.Text = "  🌸 Silent AI (Debug System)"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 13
+TitleLabel.TextSize = 12
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
@@ -106,8 +146,8 @@ CloseCorner.Parent = CloseBtn
 -- Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
-StatusLabel.Text = "Status: ACTIVE\nListening for 'silent' or 'follow me'"
+StatusLabel.Position = UDim2.new(0.05, 0, 0.15, 0)
+StatusLabel.Text = "Status: ACTIVE\nListening for 'silent' or [$commands]"
 StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
@@ -117,28 +157,43 @@ StatusLabel.Parent = MainFrame
 
 -- Bot Toggle Button
 local BotToggleBtn = Instance.new("TextButton")
-BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
+BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 28)
+BotToggleBtn.Position = UDim2.new(0.05, 0, 0.32, 0)
 BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
 BotToggleBtn.Text = "BOT: ON"
 BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 BotToggleBtn.Font = Enum.Font.GothamBold
-BotToggleBtn.TextSize = 12
+BotToggleBtn.TextSize = 11
 BotToggleBtn.Parent = MainFrame
 
 local BotCorner = Instance.new("UICorner")
 BotCorner.CornerRadius = UDim.new(0, 6)
 BotCorner.Parent = BotToggleBtn
 
+-- Debug Toggle Button
+local DebugBtn = Instance.new("TextButton")
+DebugBtn.Size = UDim2.new(0.9, 0, 0, 28)
+DebugBtn.Position = UDim2.new(0.05, 0, 0.46, 0)
+DebugBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+DebugBtn.Text = "DEBUG MODE: OFF"
+DebugBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DebugBtn.Font = Enum.Font.GothamBold
+DebugBtn.TextSize = 11
+DebugBtn.Parent = MainFrame
+
+local DebugCorner = Instance.new("UICorner")
+DebugCorner.CornerRadius = UDim.new(0, 6)
+DebugCorner.Parent = DebugBtn
+
 -- Mode Swap Button
 local ModeBtn = Instance.new("TextButton")
-ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
+ModeBtn.Size = UDim2.new(0.9, 0, 0, 28)
+ModeBtn.Position = UDim2.new(0.05, 0, 0.60, 0)
 ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
 ModeBtn.Text = "Mode: OwO Mode"
 ModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ModeBtn.Font = Enum.Font.GothamBold
-ModeBtn.TextSize = 12
+ModeBtn.TextSize = 11
 ModeBtn.Parent = MainFrame
 
 local ModeCorner = Instance.new("UICorner")
@@ -147,20 +202,20 @@ ModeCorner.Parent = ModeBtn
 
 -- Stop Follow Button
 local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 0.74)
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 28)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
 StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 StopFollowBtn.Text = "Stop Following"
 StopFollowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 StopFollowBtn.Font = Enum.Font.GothamBold
-StopFollowBtn.TextSize = 12
+StopFollowBtn.TextSize = 11
 StopFollowBtn.Parent = MainFrame
 
 local StopCorner = Instance.new("UICorner")
 StopCorner.CornerRadius = UDim.new(0, 6)
 StopCorner.Parent = StopFollowBtn
 
--- Button Interactions
+-- Button Listeners
 ToggleBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
@@ -170,33 +225,48 @@ BotToggleBtn.MouseButton1Click:Connect(function()
     if botEnabled then
         BotToggleBtn.Text = "BOT: ON"
         BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
-        StatusLabel.Text = "Status: ACTIVE\nListening for 'silent'"
+        StatusLabel.Text = "Status: ACTIVE\nListening..."
+        debugLog("BOT ENABLED")
     else
         BotToggleBtn.Text = "BOT: OFF"
         BotToggleBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
         StatusLabel.Text = "Status: INACTIVE"
+        debugLog("BOT DISABLED")
+    end
+end)
+
+DebugBtn.MouseButton1Click:Connect(function()
+    debugMode = not debugMode
+    if debugMode then
+        DebugBtn.Text = "DEBUG MODE: ON"
+        DebugBtn.BackgroundColor3 = Color3.fromRGB(200, 140, 40)
+        debugLog("DEBUG MODE ACTIVATED")
+    else
+        debugLog("DEBUG MODE DEACTIVATED")
+        debugMode = false
+        DebugBtn.Text = "DEBUG MODE: OFF"
+        DebugBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
     end
 end)
 
 ModeBtn.MouseButton1Click:Connect(function()
     currentModeIndex = (currentModeIndex % #Modes) + 1
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
+    debugLog("PERSONALITY MODE CHANGED TO " .. Modes[currentModeIndex].Name:upper())
 end)
 
--- === FULL SHUTDOWN FUNCTION ===
+-- === FULL SHUTDOWN ===
 local function destroyAllInstances()
+    debugLog("SHUTTING DOWN ALL INSTANCES")
     botEnabled = false
-    
     if followConnection then
         followConnection:Disconnect()
         followConnection = nil
     end
-
     for _, conn in ipairs(chatConnections) do
         if conn then conn:Disconnect() end
     end
     chatConnections = {}
-
     pcall(function()
         for _, child in ipairs(PlayerGui:GetChildren()) do
             if child.Name == "SilentAIBotNative" then
@@ -208,39 +278,25 @@ end
 
 CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- === SAFE CHAT SENDER (NO COREGUI ACCESS) ===
-local function sendMessage(msg)
-    if not msg or msg == "" then return end
-    pcall(function()
-        local textChannels = TextChatService:FindFirstChild("TextChannels")
-        if textChannels then
-            local general = textChannels:FindFirstChild("RBXGeneral")
-            if general then
-                general:SendAsync(msg)
-                return
-            end
-        end
-        
-        local replicatedStorage = game:GetService("ReplicatedStorage")
-        local sayRemote = replicatedStorage:FindFirstChild("SayMessageRequest", true)
-        if sayRemote then
-            sayRemote:FireServer(msg, "All")
-        end
-    end)
-end
-
--- === SAFE API QUERY ===
+-- === AI API QUERY ===
 local function queryAI(promptText, senderName)
-    if not request then return "Executor missing request API!" end
+    if not request then 
+        debugLog("ERROR: MISSING HTTP REQUEST API")
+        return "Executor missing request API!" 
+    end
+
+    local sysPrompt = debugMode and "You are a raw system model. Answer as directly and plainly as possible without any personality or fluff." or Modes[currentModeIndex].Prompt
 
     local payload = HttpService:JSONEncode({
         model = "openrouter/free",
         max_tokens = 40,
         messages = {
-            { role = "system", content = Modes[currentModeIndex].Prompt },
+            { role = "system", content = sysPrompt },
             { role = "user", content = senderName .. ": " .. promptText }
         }
     })
+
+    debugLog("SENDING API PAYLOAD FOR " .. senderName:upper())
 
     local success, response = pcall(function()
         return request({
@@ -259,18 +315,22 @@ local function queryAI(promptText, senderName)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
             if type(rawContent) == "string" and rawContent ~= "" then
-                return rawContent:gsub('^"', ''):gsub('"$', '')
+                local cleaned = rawContent:gsub('^"', ''):gsub('"$', '')
+                debugLog("RECEIVED RESPONSE: " .. cleaned)
+                return cleaned
             end
         end
     end
 
-    return "B-Baka! AI timed out... ♡"
+    debugLog("ERROR: API REQUEST TIMED OUT OR FAILED")
+    return debugMode and "--SILENTAI API ERROR--" or "B-Baka! AI timed out... ♡"
 end
 
--- === STABLE DIRECT NAVIGATION ===
+-- === NAVIGATION CONTROLS ===
 local function startFollowing(player)
     targetFollowPlayer = player
     if followConnection then followConnection:Disconnect() end
+    debugLog("STARTING FOLLOW ON " .. (player.DisplayName or player.Name):upper())
 
     followConnection = RunService.Heartbeat:Connect(function()
         if not targetFollowPlayer or not targetFollowPlayer.Character then return end
@@ -292,6 +352,7 @@ local function startFollowing(player)
 end
 
 local function stopFollowing()
+    debugLog("STOPPING FOLLOW CONNECTION")
     targetFollowPlayer = nil
     if followConnection then
         followConnection:Disconnect()
@@ -301,48 +362,152 @@ end
 
 StopFollowBtn.MouseButton1Click:Connect(function()
     stopFollowing()
-    sendMessage("Stopped following! ♡")
+    if not debugMode then sendMessage("Stopped following! ♡") end
 end)
+
+-- === FRONT PLAYER DETECTION ===
+local function getPlayerInFront()
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+
+    local myHRP = myChar.HumanoidRootPart
+    local closestPlayer = nil
+    local shortestDist = 15
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHRP = p.Character.HumanoidRootPart
+            local dirToTarget = (targetHRP.Position - myHRP.Position)
+            local dist = dirToTarget.Magnitude
+
+            if dist < shortestDist then
+                local dot = myHRP.CFrame.LookVector:Dot(dirToTarget.Unit)
+                if dot > 0.5 then
+                    shortestDist = dist
+                    closestPlayer = p
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- === TARGET SEARCH ===
+local function findPlayerByName(nameQuery)
+    local query = nameQuery:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(query) or p.DisplayName:lower():find(query) then
+            return p
+        end
+    end
+    return nil
+end
 
 -- === MESSAGE PROCESSOR ===
 local function processIncomingMessage(player, messageText)
-    if not botEnabled or isProcessing then return end
-    if player == LocalPlayer then return end
-
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
+
+    -- EXPLICIT COMMAND SYSTEM OVERRIDES [$cmd]
+    if lowerMsg:find("%[%$debug%]") then
+        debugMode = not debugMode
+        DebugBtn.Text = debugMode and "DEBUG MODE: ON" or "DEBUG MODE: OFF"
+        DebugBtn.BackgroundColor3 = debugMode and Color3.fromRGB(200, 140, 40) or Color3.fromRGB(70, 70, 90)
+        debugLog("DEBUG MODE SET TO " .. tostring(debugMode):upper())
+        return
+    elseif lowerMsg:find("%[%$stop%]") then
+        stopFollowing()
+        debugLog("EXEC OVERRIDE: STOP FOLLOW")
+        return
+    elseif lowerMsg:find("%[%$follow%]") then
+        startFollowing(player)
+        debugLog("EXEC OVERRIDE: FOLLOW SENDER")
+        return
+    elseif lowerMsg:find("%[%$mode%]") then
+        currentModeIndex = (currentModeIndex % #Modes) + 1
+        ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
+        debugLog("EXEC OVERRIDE: SWAPPED MODE TO " .. Modes[currentModeIndex].Name:upper())
+        return
+    end
+
+    if not botEnabled then return end
+    if player == LocalPlayer then return end
+
     local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
     if isTriggered or isContinuous then
+        debugLog("CHAT INCOMING FROM " .. senderName:upper() .. ": " .. messageText)
+
+        if isProcessing then
+            debugLog("BOT BUSY: SENDING PROCESSING NOTICE")
+            if debugMode then
+                sendMessage("--SILENTAI BUSY PROCESSING--")
+            else
+                sendMessage(Modes[currentModeIndex].ThinkingMsg)
+            end
+            return
+        end
+
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- Navigation Trigger Commands
-        if lowerMsg:find("follow me") or lowerMsg:find("come here") or lowerMsg:find("follow") then
-            sendMessage("Coming to you, " .. senderName .. "! ♡")
+        -- GOTO TARGET
+        if lowerMsg:find("goto") or lowerMsg:find("go to") then
+            local targetName = lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("go to%s+(%w+)")
+            if targetName then
+                local foundPlayer = findPlayerByName(targetName)
+                if foundPlayer then
+                    if not debugMode then sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡") end
+                    startFollowing(foundPlayer)
+                    return
+                else
+                    if not debugMode then sendMessage("I couldn't find anyone named " .. targetName .. "!") end
+                    debugLog("TARGET " .. targetName:upper() .. " NOT FOUND")
+                    return
+                end
+            end
+        end
+
+        -- FOLLOW / STOP
+        if lowerMsg:find("follow me") or lowerMsg:find("come here") or (lowerMsg:find("follow") and not lowerMsg:find("stop")) then
+            if not debugMode then sendMessage("Coming to you, " .. senderName .. "! ♡") end
             startFollowing(player)
             return
         elseif lowerMsg:find("stop follow") or lowerMsg:find("stop") or lowerMsg:find("stay") then
             stopFollowing()
-            sendMessage("Stopped following! ♡")
+            if not debugMode then sendMessage("Stopped following! ♡") end
             return
         end
 
+        -- FRONT PLAYER CONTEXT
+        local processedPrompt = messageText
+        if lowerMsg:find("person in front") or lowerMsg:find("person infront") or lowerMsg:find("guy in front") then
+            local frontPlayer = getPlayerInFront()
+            if frontPlayer then
+                local pName = frontPlayer.DisplayName or frontPlayer.Name
+                processedPrompt = processedPrompt .. " (Context: The player standing directly in front of you is named " .. pName .. ")"
+                debugLog("DETECTED FRONT PLAYER: " .. pName:upper())
+            else
+                processedPrompt = processedPrompt .. " (Context: No player is standing directly in front of you)"
+                debugLog("NO FRONT PLAYER DETECTED")
+            end
+        end
+
         isProcessing = true
-        StatusLabel.Text = "Status: Generating reply for " .. senderName .. "..."
+        StatusLabel.Text = "Status: Replying to " .. senderName .. "..."
 
         task.spawn(function()
-            local cleanPrompt = messageText:gsub("hey silent", ""):gsub("silent", "")
+            local cleanPrompt = processedPrompt:gsub("hey silent", ""):gsub("silent", "")
             local reply = queryAI(cleanPrompt, senderName)
             if reply then sendMessage(reply) end
-            StatusLabel.Text = "Status: ACTIVE\nListening for 'silent'"
+            StatusLabel.Text = "Status: ACTIVE\nListening..."
             isProcessing = false
         end)
     end
 end
 
--- === CHAT HOOKS (PROTECTED FROM COREGUI ERRORS) ===
+-- === CHAT HOOKS ===
 pcall(function()
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
         local c = TextChatService.MessageReceived:Connect(function(textChatMessage)
@@ -364,3 +529,5 @@ pcall(function()
         table.insert(chatConnections, c2)
     end
 end)
+
+debugLog("READY AND LISTENING")
