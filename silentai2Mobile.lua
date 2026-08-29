@@ -1,8 +1,8 @@
--- === DELTA MOBILE SAFE INITIALIZATION ===
+-- === DELTA & UNIVERSAL INITIALIZATION ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Polling loop to prevent infinite hanging on mobile
+-- Mobile polling loop to prevent infinite hanging
 while not LocalPlayer do
     task.wait(0.1)
     LocalPlayer = Players.LocalPlayer
@@ -13,10 +13,10 @@ local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
--- Delta & Universal Mobile HTTP Request Handler
+-- Executor HTTP Request Resolver
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
--- === CLEANUP PREEXISTING INSTANCES ===
+-- Cleanup pre-existing UI instances
 pcall(function()
     for _, child in ipairs(PlayerGui:GetChildren()) do
         if child.Name == "SilentAIBotNative" then
@@ -25,7 +25,7 @@ pcall(function()
     end
 end)
 
--- Config & State
+-- Configuration & State
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -74,14 +74,14 @@ local function sendMessage(msg)
     end)
 end
 
--- === PURE NATIVE GUI ENGINE ===
+-- === NATIVE GUI ENGINE ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999999
 ScreenGui.Parent = PlayerGui
 
--- Toggle Button
+-- Toggle Button (Floating)
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(0, 45, 0, 45)
 ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
@@ -95,7 +95,7 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(1, 0)
 ToggleCorner.Parent = ToggleBtn
 
--- Main Frame
+-- Main Control Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 240, 0, 200)
 MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
@@ -109,11 +109,11 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
--- Title
+-- Title Bar
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "  🌸 Silent AI (Smart Follow)"
+TitleLabel.Text = "  🌸 Silent AI (Smart Bot)"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
@@ -124,7 +124,7 @@ local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = TitleLabel
 
--- Close Button (X)
+-- Close Button
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 24, 0, 24)
 CloseBtn.Position = UDim2.new(1, -27, 0, 3)
@@ -143,7 +143,7 @@ CloseCorner.Parent = CloseBtn
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
 StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
-StatusLabel.Text = "Status: ACTIVE\nListening for 'silent'..."
+StatusLabel.Text = "Status: ACTIVE\nListening for 'silent' or $commands"
 StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
@@ -196,7 +196,7 @@ local StopCorner = Instance.new("UICorner")
 StopCorner.CornerRadius = UDim.new(0, 6)
 StopCorner.Parent = StopFollowBtn
 
--- Button Listeners
+-- Button Event Listeners
 ToggleBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
@@ -219,7 +219,7 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
--- === FULL SHUTDOWN ===
+-- Full Shutdown Helper
 local function destroyAllInstances()
     botEnabled = false
     if followConnection then
@@ -359,7 +359,7 @@ local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
 
-    -- Direct Command Handling ($commands)
+    -- Direct Chat Commands ($prefix)
     if lowerMsg:find("%$stop") then
         stopFollowing()
         sendMessage("Stopped following! ♡")
@@ -409,6 +409,7 @@ local function processIncomingMessage(player, messageText)
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
     if isTriggered or isContinuous then
+        -- Multi-user busy detection
         if isProcessing then
             sendMessage(Modes[currentModeIndex].ThinkingMsg)
             return
@@ -417,7 +418,7 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- GOTO TARGET via natural phrase
+        -- GOTO TARGET (Natural Language)
         if lowerMsg:find("goto") or lowerMsg:find("go to") then
             local targetName = lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("go to%s+(%w+)")
             if targetName then
@@ -433,7 +434,7 @@ local function processIncomingMessage(player, messageText)
             end
         end
 
-        -- FOLLOW / STOP via natural phrase
+        -- FOLLOW / STOP (Natural Language)
         if lowerMsg:find("follow me") or lowerMsg:find("come here") or (lowerMsg:find("follow") and not lowerMsg:find("stop")) then
             sendMessage("Coming to you, " .. senderName .. "! ♡")
             startFollowing(player)
