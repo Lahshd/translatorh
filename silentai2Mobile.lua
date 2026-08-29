@@ -172,7 +172,6 @@ local BotCorner = Instance.new("UICorner")
 BotCorner.CornerRadius = UDim.new(0, 6)
 BotCorner.Parent = BotToggleBtn
 
--- FIX: Converted Mode display into an interactive TextButton
 local ModeBtn = Instance.new("TextButton")
 ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
 ModeBtn.Position = UDim2.new(0.05, 0, 0.54, 0)
@@ -219,7 +218,6 @@ BotToggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Click Listener for Mode Toggle Button
 ModeBtn.MouseButton1Click:Connect(function()
     currentModeIndex = (currentModeIndex % #Modes) + 1
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
@@ -336,7 +334,7 @@ local function queryAI(promptText, senderName)
     return "[Debug OpenRouter Error after " .. tostring(maxRetries) .. " attempts: " .. lastError .. "]"
 end
 
--- === ROBUST RAYTRACING & PATHFINDING GOTO SYSTEM ===
+-- === EXPLICIT RAYCASTING & MOVEMENT ENGINE ===
 local function gotoPosition(targetPosition, isSeat, seatInstance)
     stopNavigation()
 
@@ -346,9 +344,8 @@ local function gotoPosition(targetPosition, isSeat, seatInstance)
 
         local raycastParams = RaycastParams.new()
         raycastParams.FilterAncestors = {myChar}
-        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 
-        -- Direct Line-of-Sight Check
         local rayOrigin = myHRP.Position
         local rayDirection = targetPosition - rayOrigin
         local directHit = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
@@ -360,7 +357,6 @@ local function gotoPosition(targetPosition, isSeat, seatInstance)
             return
         end
 
-        -- Pathfinding Route Calculation
         local path = PathfindingService:CreatePath({
             AgentRadius = 2,
             AgentHeight = 5,
@@ -415,7 +411,7 @@ local function gotoPosition(targetPosition, isSeat, seatInstance)
     end)
 end
 
--- Continuous Target Follow Loop
+-- Target Follow Loop
 local function startFollowing(player)
     stopNavigation()
     targetFollowPlayer = player
@@ -441,7 +437,6 @@ local function startFollowing(player)
     end)
 end
 
--- Raycast forward to detect physical objects
 local function getObjectInFront()
     local myChar, _, myHRP = getCharacterComponents()
     if not myChar or not myHRP then return nil end
@@ -451,7 +446,7 @@ local function getObjectInFront()
 
     local raycastParams = RaycastParams.new()
     raycastParams.FilterAncestors = {myChar}
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 
     local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
     if result and result.Instance then
@@ -472,7 +467,6 @@ StopFollowBtn.MouseButton1Click:Connect(function()
     sendMessage("Stopped movement! ♡")
 end)
 
--- Front player detection
 local function getPlayerInFront()
     local myChar, _, myHRP = getCharacterComponents()
     if not myChar or not myHRP then return nil end
@@ -515,8 +509,8 @@ local function processIncomingMessage(player, messageText)
 
     if not botEnabled then return end
 
-    -- FIX: Intercept prefix commands immediately before checking conversational triggers
-    if lowerMsg:sub(1, 1) == "$" then
+    -- Fix: Allow self-execution of $ commands for testing/control
+    if lowerMsg:sub(1, 1) == "$" or lowerMsg:find("^%$") then
         if lowerMsg:find("^%$stop") then
             stopNavigation()
             sendMessage("Stopped movement! ♡")
@@ -546,7 +540,6 @@ local function processIncomingMessage(player, messageText)
 
     if player == LocalPlayer then return end
 
-    -- Natural Conversational Triggers ("hey silent", "silent")
     local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
@@ -559,7 +552,6 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- Dynamic Detection: Sit / Object Navigation
         local isObjectMove = lowerMsg:find("go onto") or lowerMsg:find("go on") or lowerMsg:find("sit down") or lowerMsg:find("sit on") or lowerMsg:find("sit") or lowerMsg:find("goto object") or lowerMsg:find("walk to")
         local detectedObj = nil
 
@@ -568,7 +560,6 @@ local function processIncomingMessage(player, messageText)
             if detectedObj then
                 gotoPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
             end
-        -- Dynamic Detection: Following
         elseif lowerMsg:find("stop follow") or lowerMsg:find("stop following") or lowerMsg:find("stay") or lowerMsg:find("stop moving") then
             stopNavigation()
         elseif lowerMsg:find("follow me") or lowerMsg:find("come here") or lowerMsg:find("follow us") then
@@ -583,7 +574,6 @@ local function processIncomingMessage(player, messageText)
             end
         end
 
-        -- Construct Context Prompt
         local processedPrompt = messageText
         
         if detectedObj then
