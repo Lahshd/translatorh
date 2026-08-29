@@ -316,7 +316,7 @@ local function queryAI(promptText, senderName)
     return "[Debug OpenRouter Error after " .. tostring(maxRetries) .. " attempts: " .. lastError .. "]"
 end
 
--- === NAVIGATION & SPATIAL RAYCASTING CONTROLS ===
+-- === NAVIGATION & SPATIAL CONTROLS ===
 local function startFollowing(player)
     stopFollowing()
     targetFollowPlayer = player
@@ -334,7 +334,7 @@ local function startFollowing(player)
 
                     if humanoid and targetHRP and myHRP then
                         local dist = (myHRP.Position - targetHRP.Position).Magnitude
-                        if dist > 6 then
+                        if dist > 4 then
                             humanoid:MoveTo(targetHRP.Position)
                         end
                     end
@@ -345,15 +345,23 @@ local function startFollowing(player)
     end)
 end
 
--- Corrected Raycast Function using valid RaycastParams properties
+local function walkToPositionDirectly(pos)
+    stopFollowing()
+    local myChar = LocalPlayer.Character
+    if not myChar then return end
+    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid:MoveTo(pos)
+    end
+end
+
 local function getObjectInFront()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
 
     local myHRP = myChar.HumanoidRootPart
     local rayOrigin = myHRP.Position
-    -- Forward ray projection ahead of character
-    local rayDirection = (myHRP.CFrame.LookVector * 30) + Vector3.new(0, -1, 0)
+    local rayDirection = (myHRP.CFrame.LookVector * 35) + Vector3.new(0, -2, 0)
 
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {myChar}
@@ -373,7 +381,40 @@ local function getObjectInFront()
     return nil
 end
 
--- Command to walk to a target 3D position
+local function findTargetObject()
+    local rayResult = getObjectInFront()
+    if rayResult then return rayResult end
+
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+    local myPos = myChar.HumanoidRootPart.Position
+
+    local closestObj = nil
+    local shortestDist = 80
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") or obj:IsA("BasePart") then
+            local name = obj.Name:lower()
+            if name:find("chair") or name:find("seat") or name:find("stool") or name:find("bench") then
+                local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart", true)
+                if part then
+                    local dist = (part.Position - myPos).Magnitude
+                    if dist < shortestDist then
+                        shortestDist = dist
+                        closestObj = {
+                            Instance = obj,
+                            ModelName = obj.Name,
+                            Position = part.Position,
+                            IsSeat = obj:IsA("Seat") or obj:IsA("VehicleSeat") or (obj:FindFirstChildWhichIsA("Seat", true) ~= nil)
+                        }
+                    end
+                end
+            end
+        end
+    end
+    return closestObj
+end
+
 local function walkToObjectPosition(targetPos, isSeat, seatInstance)
     stopFollowing()
     local myChar = LocalPlayer.Character
@@ -398,7 +439,6 @@ StopFollowBtn.MouseButton1Click:Connect(function()
     sendMessage("Stopped following! ♡")
 end)
 
--- === FRONT PLAYER DETECTION ===
 local function getPlayerInFront()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
@@ -443,7 +483,7 @@ local function processIncomingMessage(player, messageText)
     if not botEnabled then return end
     if player == LocalPlayer then return end
 
-    -- 1. Explicit UI Commands ($prefix)
+    -- 1. Explicit Prefix Commands
     if lowerMsg:find("%$stop") then
         stopFollowing()
         sendMessage("Stopped following! ♡")
@@ -470,7 +510,7 @@ local function processIncomingMessage(player, messageText)
         return
     end
 
-    -- 2. General AI Trigger Check
+    -- 2. Trigger Check
     local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
@@ -483,29 +523,30 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- Check Object Interaction Commands
-        local isObjectMove = lowerMsg:find("go onto") or lowerMsg:find("go on") or lowerMsg:find("sit down") or lowerMsg:find("sit on") or lowerMsg:find("go to that") or lowerMsg:find("walk to that") or lowerMsg:find("sit in")
         local detectedObj = nil
 
-        if isObjectMove then
-            stopFollowing() -- Cancel follow loop to allow free navigation to target object
-            detectedObj = getObjectInFront()
-            if detectedObj then
-                walkToObjectPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
+        -- ORDER FIX: Check Player Movement Targets FIRST before Object Scans
+        if lowerMsg:find("walk to me") or lowerMsg:find("come to me") or lowerMsg:find("come here") or lowerMsg:find("follow me") or lowerMsg:find("%$follow") then
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                walkToPositionDirectly(player.Character.HumanoidRootPart.Position)
             end
         elseif lowerMsg:find("stop follow") or lowerMsg:find("stop following") or lowerMsg:find("stay") then
             stopFollowing()
-        elseif lowerMsg:find("follow me") or lowerMsg:find("come here") or lowerMsg:find("%$follow") then
-            startFollowing(player)
+        elseif lowerMsg:find("chair") or lowerMsg:find("seat") or lowerMsg:find("bench") or lowerMsg:find("sit") or lowerMsg:find("walk to that") or lowerMsg:find("go to that") then
+            stopFollowing()
+            detectedObj = findTargetObject()
+            if detectedObj then
+                walkToObjectPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
+            end
         else
-            local targetName = lowerMsg:match("follow%s+(%w+)") or lowerMsg:match("goto%s+(%w+)")
+            local targetName = lowerMsg:match("follow%s+(%w+)") or lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("walk to%s+(%w+)")
             if targetName and targetName ~= "me" and targetName ~= "us" then
                 local foundPlayer = findPlayerByName(targetName)
                 if foundPlayer then startFollowing(foundPlayer) end
             end
         end
 
-        -- Construct Context Prompt
+        -- Context Prompt Generation
         local processedPrompt = messageText
         
         if detectedObj then
