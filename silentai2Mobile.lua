@@ -345,14 +345,15 @@ local function startFollowing(player)
     end)
 end
 
--- Raycast directly ahead to detect physical objects
+-- Corrected Raycast Function using valid RaycastParams properties
 local function getObjectInFront()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
 
     local myHRP = myChar.HumanoidRootPart
     local rayOrigin = myHRP.Position
-    local rayDirection = (myHRP.CFrame.LookVector * 25) + Vector3.new(0, -2, 0)
+    -- Forward ray projection ahead of character
+    local rayDirection = (myHRP.CFrame.LookVector * 30) + Vector3.new(0, -1, 0)
 
     local raycastParams = RaycastParams.new()
     raycastParams.FilterDescendantsInstances = {myChar}
@@ -483,11 +484,11 @@ local function processIncomingMessage(player, messageText)
         lastActiveTime = tick()
 
         -- Check Object Interaction Commands
-        local isObjectMove = lowerMsg:find("go onto") or lowerMsg:find("go on") or lowerMsg:find("sit down") or lowerMsg:find("sit on") or lowerMsg:find("go to that") or lowerMsg:find("walk to that")
+        local isObjectMove = lowerMsg:find("go onto") or lowerMsg:find("go on") or lowerMsg:find("sit down") or lowerMsg:find("sit on") or lowerMsg:find("go to that") or lowerMsg:find("walk to that") or lowerMsg:find("sit in")
         local detectedObj = nil
 
         if isObjectMove then
-            stopFollowing()
+            stopFollowing() -- Cancel follow loop to allow free navigation to target object
             detectedObj = getObjectInFront()
             if detectedObj then
                 walkToObjectPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
@@ -509,7 +510,7 @@ local function processIncomingMessage(player, messageText)
         
         if detectedObj then
             processedPrompt = processedPrompt .. " [System Note: You just spotted an object named '" .. detectedObj.ModelName .. "' in front of you and are walking toward it.]"
-        elseif lowerMsg:find("front") or lowerMsg:find("who is in") or lowerMsg:find("who's in") or lowerMsg:find("in front") then
+        elseif lowerMsg:find("front") or lowerMsg:find("who is in") or lowerMsg:find("who's in") or lowerMsg:find("in front") or lowerMsg:find("staring at") then
             local frontPlayer = getPlayerInFront()
             if frontPlayer then
                 local pName = frontPlayer.DisplayName or frontPlayer.Name
