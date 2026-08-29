@@ -160,7 +160,7 @@ BotCorner.CornerRadius = UDim.new(0, 6)
 BotCorner.Parent = BotToggleBtn
 
 local ModeBtn = Instance.new("TextButton")
-ModeBtn.Size = UDim2.new(0.9, 0, 0, 0.56)
+ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
 ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
 ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
 ModeBtn.Text = "Mode: OwO Mode"
@@ -345,17 +345,17 @@ local function startFollowing(player)
     end)
 end
 
--- Raycast directly ahead to detect physical objects (tables, chairs, ground surfaces)
+-- Raycast directly ahead to detect physical objects
 local function getObjectInFront()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
 
     local myHRP = myChar.HumanoidRootPart
     local rayOrigin = myHRP.Position
-    local rayDirection = (myHRP.CFrame.LookVector * 30) + Vector3.new(0, -5, 0)
+    local rayDirection = (myHRP.CFrame.LookVector * 25) + Vector3.new(0, -2, 0)
 
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterAncestors = {myChar}
+    raycastParams.FilterDescendantsInstances = {myChar}
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
     local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
@@ -372,7 +372,7 @@ local function getObjectInFront()
     return nil
 end
 
--- Command to walk to a target 3D position (e.g. table surface, seat)
+-- Command to walk to a target 3D position
 local function walkToObjectPosition(targetPos, isSeat, seatInstance)
     stopFollowing()
     local myChar = LocalPlayer.Character
@@ -482,11 +482,12 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- Check Object Interaction Commands (go onto table, sit on chair, etc.)
+        -- Check Object Interaction Commands
         local isObjectMove = lowerMsg:find("go onto") or lowerMsg:find("go on") or lowerMsg:find("sit down") or lowerMsg:find("sit on") or lowerMsg:find("go to that") or lowerMsg:find("walk to that")
         local detectedObj = nil
 
         if isObjectMove then
+            stopFollowing()
             detectedObj = getObjectInFront()
             if detectedObj then
                 walkToObjectPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance)
