@@ -9,10 +9,14 @@ local RunService = game:GetService("RunService")
 -- HTTP Request Handler
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request)
 
--- Clean up existing UI if re-executed
-if PlayerGui:FindFirstChild("SilentAIBotNative") then
-    PlayerGui.SilentAIBotNative:Destroy()
-end
+-- === CLEANUP PREEXISTING INSTANCES (SAFE PLAYERGUI ONLY) ===
+pcall(function()
+    for _, child in ipairs(PlayerGui:GetChildren()) do
+        if child.Name == "SilentAIBotNative" then
+            child:Destroy()
+        end
+    end
+end)
 
 -- Config & State
 local OPENROUTER_API_KEY = "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"
@@ -25,6 +29,7 @@ local lastActiveUser = nil
 local lastActiveTime = 0
 local targetFollowPlayer = nil
 local followConnection = nil
+local chatConnections = {}
 
 local currentModeIndex = 1
 local Modes = {
@@ -33,7 +38,7 @@ local Modes = {
     {Name = "Yandere Mode", Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies under 12 words."}
 }
 
--- === PURE NATIVE GUI ENGINE (NO EXTERNAL LIBS) ===
+-- === PURE NATIVE GUI ENGINE ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
@@ -59,9 +64,9 @@ local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 240, 0, 200)
 MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
-MainFrame.Visible = true -- Default open so you see it instantly
+MainFrame.Visible = true
 MainFrame.Active = true
-MainFrame.Draggable = true -- Built-in drag support for PC
+MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
@@ -72,15 +77,31 @@ MainCorner.Parent = MainFrame
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "🌸 Silent AI & Follow Engine"
+TitleLabel.Text = "  🌸 Silent AI & Navigation"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 13
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = TitleLabel
+
+-- Close Button (X)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 24, 0, 24)
+CloseBtn.Position = UDim2.new(1, -27, 0, 3)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = MainFrame
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
 
 -- Status Label
 local StatusLabel = Instance.new("TextLabel")
@@ -126,7 +147,7 @@ ModeCorner.Parent = ModeBtn
 
 -- Stop Follow Button
 local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 0.74)
 StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
 StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 StopFollowBtn.Text = "Stop Following"
@@ -162,16 +183,48 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
--- === CHAT LOGIC ===
+-- === FULL SHUTDOWN FUNCTION ===
+local function destroyAllInstances()
+    botEnabled = false
+    
+    if followConnection then
+        followConnection:Disconnect()
+        followConnection = nil
+    end
+
+    for _, conn in ipairs(chatConnections) do
+        if conn then conn:Disconnect() end
+    end
+    chatConnections = {}
+
+    pcall(function()
+        for _, child in ipairs(PlayerGui:GetChildren()) do
+            if child.Name == "SilentAIBotNative" then
+                child:Destroy()
+            end
+        end
+    end)
+end
+
+CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
+
+-- === SAFE CHAT SENDER (NO COREGUI ACCESS) ===
 local function sendMessage(msg)
     if not msg or msg == "" then return end
     pcall(function()
-        local textChannel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-        if textChannel then
-            textChannel:SendAsync(msg)
-        else
-            local sayRemote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
-            if sayRemote then sayRemote:FireServer(msg, "All") end
+        local textChannels = TextChatService:FindFirstChild("TextChannels")
+        if textChannels then
+            local general = textChannels:FindFirstChild("RBXGeneral")
+            if general then
+                general:SendAsync(msg)
+                return
+            end
+        end
+        
+        local replicatedStorage = game:GetService("ReplicatedStorage")
+        local sayRemote = replicatedStorage:FindFirstChild("SayMessageRequest", true)
+        if sayRemote then
+            sayRemote:FireServer(msg, "All")
         end
     end)
 end
@@ -201,7 +254,7 @@ local function queryAI(promptText, senderName)
         })
     end)
 
-    if success and response and (response.StatusCode == 200 or response.StatusDescription == "OK") then
+    if success and response and response.Body then
         local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
         if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
             local rawContent = data.choices[1].message.content
@@ -224,12 +277,15 @@ local function startFollowing(player)
         local myChar = LocalPlayer.Character
         local targetChar = targetFollowPlayer.Character
 
-        if myChar and targetChar and myChar:FindFirstChild("Humanoid") and targetChar:FindFirstChild("HumanoidRootPart") then
+        if myChar and targetChar then
+            local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+            local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
             local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-            local targetHRP = targetChar.HumanoidRootPart
 
-            if myHRP and (myHRP.Position - targetHRP.Position).Magnitude > 7 then
-                myChar.Humanoid:MoveTo(targetHRP.Position)
+            if humanoid and targetHRP and myHRP then
+                if (myHRP.Position - targetHRP.Position).Magnitude > 7 then
+                    humanoid:MoveTo(targetHRP.Position)
+                end
             end
         end
     end)
@@ -254,7 +310,7 @@ local function processIncomingMessage(player, messageText)
     if player == LocalPlayer then return end
 
     local lowerMsg = messageText:lower()
-    local senderName = player.DisplayName
+    local senderName = player.DisplayName or player.Name
     local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
     local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
 
@@ -286,20 +342,25 @@ local function processIncomingMessage(player, messageText)
     end
 end
 
--- === CHAT HOOKS ===
-if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-    TextChatService.MessageReceived:Connect(function(textChatMessage)
-        local sender = textChatMessage.TextSource
-        if sender then
-            local player = Players:GetPlayerByUserId(sender.UserId)
-            if player then processIncomingMessage(player, textChatMessage.Text) end
+-- === CHAT HOOKS (PROTECTED FROM COREGUI ERRORS) ===
+pcall(function()
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local c = TextChatService.MessageReceived:Connect(function(textChatMessage)
+            if textChatMessage and textChatMessage.TextSource then
+                local player = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
+                if player then processIncomingMessage(player, textChatMessage.Text) end
+            end
+        end)
+        table.insert(chatConnections, c)
+    else
+        for _, p in ipairs(Players:GetPlayers()) do
+            local c = p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+            table.insert(chatConnections, c)
         end
-    end)
-else
-    for _, p in ipairs(Players:GetPlayers()) do
-        p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+        local c2 = Players.PlayerAdded:Connect(function(p)
+            local c = p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+            table.insert(chatConnections, c)
+        end)
+        table.insert(chatConnections, c2)
     end
-    Players.PlayerAdded:Connect(function(p)
-        p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
-    end)
-end
+end)
