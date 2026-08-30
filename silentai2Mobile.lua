@@ -1,6 +1,6 @@
 -- === DELTA & UNIVERSAL INITIALIZATION ===
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+LocalPlayer = Players.LocalPlayer
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
@@ -33,11 +33,13 @@ local RUN_SPEED = 33
 local botEnabled = true
 local continuousTalk = true
 local isProcessing = false
+local isSprintingActive = false
 local lastActiveUser = nil
 local lastActiveTime = 0
 local followingPlayer = nil
 local followConnection = nil
 local activePathTask = nil
+local autoScanConnection = nil
 local chatConnections = {}
 
 local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Do not output thinking, reasoning, or meta remarks."
@@ -78,6 +80,30 @@ local function sendMessage(msg)
     end)
 end
 
+-- === SPRINT TOGGLER (UI BUTTON FINDER) ===
+local function setSprintUIState(enable)
+    if isSprintingActive == enable then return end
+    isSprintingActive = enable
+
+    pcall(function()
+        local pGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if not pGui then return end
+
+        for _, guiObj in ipairs(pGui:GetDescendants()) do
+            if guiObj:IsA("ImageButton") or guiObj:IsA("TextButton") then
+                local btnName = guiObj.Name:lower()
+                if btnName:find("run") or btnName:find("sprint") or btnName:find("shift") or btnName:find("fast") then
+                    if getconnections then
+                        for _, conn in ipairs(getconnections(guiObj.MouseButton1Down)) do conn:Fire() end
+                        for _, conn in ipairs(getconnections(guiObj.MouseButton1Click)) do conn:Fire() end
+                        for _, conn in ipairs(getconnections(guiObj.Activated)) do conn:Fire() end
+                    end
+                end
+            end
+        end
+    end)
+end
+
 -- === NATIVE GUI ENGINE ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
@@ -114,7 +140,7 @@ MainCorner.Parent = MainFrame
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "  🌸 Silent AI (Smart Bot)"
+TitleLabel.Text = "   🌸 Silent AI (Smart Bot)"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
@@ -196,6 +222,10 @@ ToggleBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
 
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+
 BotToggleBtn.MouseButton1Click:Connect(function()
     botEnabled = not botEnabled
     if botEnabled then
@@ -217,14 +247,9 @@ end)
 -- === MOVEMENT & FOLLOW SYSTEM ===
 local function stopMovement()
     followingPlayer = nil
-    if followConnection then
-        followConnection:Disconnect()
-        followConnection = nil
-    end
-    if activePathTask then
-        task.cancel(activePathTask)
-        activePathTask = nil
-    end
+    if followConnection then followConnection:Disconnect() followConnection = nil end
+    if activePathTask then task.cancel(activePathTask) activePathTask = nil end
+    setSprintUIState(false)
     local myChar = LocalPlayer.Character
     if myChar then
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
@@ -237,63 +262,17 @@ StopFollowBtn.MouseButton1Click:Connect(function()
     sendMessage("Stopped following! ♡")
 end)
 
-local function updateBotSpeed(botHumanoid, targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then 
-        botHumanoid.WalkSpeed = WALK_SPEED
-        return 
-    end
-
-    local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if targetHumanoid and botHumanoid then
-        local isSprinting = targetHumanoid.MoveDirection.Magnitude > 0 and targetHumanoid.WalkSpeed > 18
-        if isSprinting then
-            botHumanoid.WalkSpeed = RUN_SPEED
-        else
-            botHumanoid.WalkSpeed = WALK_SPEED
-        end
-    end
-end
-
-local function startFollowingPlayer(targetPlayer)
-    stopMovement()
-    followingPlayer = targetPlayer
-
-    local lastPathCompute = 0
-    followConnection = RunService.Heartbeat:Connect(function()
-        if not followingPlayer or not followingPlayer.Character then return end
-        local targetHRP = followingPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local myChar = LocalPlayer.Character
-        if not myChar or not targetHRP then return end
-        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-        local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-        if not myHRP or not humanoid then return end
-
-        updateBotSpeed(humanoid, followingPlayer)
-
-        local distance = (myHRP.Position - targetHRP.Position).Magnitude
-        if distance > 6 then
-            if tick() - lastPathCompute > 0.4 then
-                lastPathCompute = tick()
-                humanoid:MoveTo(targetHRP.Position)
-            end
-        else
-            humanoid:MoveTo(myHRP.Position)
-        end
-    end)
-end
-
--- === CHAIR FIX: SEAT NAVIGATION & SITTING ROUTINE ===
+-- Pathfinding + Raycasting Navigation Engine
 local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
-    stopMovement()
+    if activePathTask then task.cancel(activePathTask) activePathTask = nil end
     
+    local isDone = false
     activePathTask = task.spawn(function()
         local myChar = LocalPlayer.Character
         if not myChar then return end
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
         local myHRP = myChar:FindFirstChild("HumanoidRootPart")
         if not humanoid or not myHRP then return end
-
-        humanoid.WalkSpeed = WALK_SPEED
 
         local path = PathfindingService:CreatePath({
             AgentRadius = 3,
@@ -316,7 +295,6 @@ local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
                 if not moveFinished then break end
             end
 
-            -- Execute Chair Sit Fix
             if isSeat and seatInstance then
                 humanoid:MoveTo(seatInstance.Position)
                 humanoid.MoveToFinished:Wait()
@@ -326,21 +304,105 @@ local function navigateToPosition(targetPos, isSeat, seatInstance, targetTool)
             end
         else
             humanoid:MoveTo(targetPos)
+            humanoid.MoveToFinished:Wait()
             if isSeat and seatInstance then
-                humanoid.MoveToFinished:Wait()
                 seatInstance:Sit(humanoid)
+            end
+        end
+        isDone = true
+    end)
+
+    while not isDone and activePathTask do
+        task.wait(0.1)
+    end
+end
+
+local function startFollowingPlayer(targetPlayer)
+    stopMovement()
+    followingPlayer = targetPlayer
+
+    local lastPathCompute = 0
+    followConnection = RunService.Heartbeat:Connect(function()
+        if not followingPlayer or not followingPlayer.Character then return end
+        local targetHRP = followingPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local targetHumanoid = followingPlayer.Character:FindFirstChildOfClass("Humanoid")
+        local myChar = LocalPlayer.Character
+        if not myChar or not targetHRP then return end
+        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+        local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+        if not myHRP or not humanoid then return end
+
+        if targetHumanoid then
+            local isSprinting = targetHumanoid.MoveDirection.Magnitude > 0 and targetHumanoid.WalkSpeed > 18
+            if isSprinting then
+                humanoid.WalkSpeed = RUN_SPEED
+                setSprintUIState(true)
+            else
+                humanoid.WalkSpeed = WALK_SPEED
+                setSprintUIState(false)
+            end
+        end
+
+        local distance = (myHRP.Position - targetHRP.Position).Magnitude
+        if distance > 6 then
+            if tick() - lastPathCompute > 0.5 then
+                lastPathCompute = tick()
+                task.spawn(function()
+                    navigateToPosition(targetHRP.Position, false, nil, nil)
+                end)
             end
         end
     end)
 end
 
--- === INVENTORY TOOL FIX ENGINE ===
+-- === LIVE RAYCASTING & SCANNER FOR NEARBY ITEMS / DOORS ===
+local function startAutoScanRaycast()
+    if autoScanConnection then autoScanConnection:Disconnect() end
+
+    autoScanConnection = RunService.Heartbeat:Connect(function()
+        local myChar = LocalPlayer.Character
+        if not myChar then return end
+        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+        if not myHRP then return end
+
+        local rayOrigin = myHRP.Position
+        local rayDirection = myHRP.CFrame.LookVector * 8
+        
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterAncestorsInstances = {myChar}
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+        local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+        if raycastResult and raycastResult.Instance then
+            local hitPart = raycastResult.Instance
+            
+            local prompt = hitPart:FindFirstChildWhichIsA("ProximityPrompt", true) or hitPart.Parent:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt and fireproximityprompt then
+                fireproximityprompt(prompt)
+            end
+
+            local clicker = hitPart:FindFirstChildWhichIsA("ClickDetector", true) or hitPart.Parent:FindFirstChildWhichIsA("ClickDetector", true)
+            if clicker and fireclickdetector then
+                fireclickdetector(clicker)
+            end
+            
+            -- Auto-pickup workspace tool dropped directly ahead
+            local toolAncestor = hitPart:FindFirstAncestorWhichIsA("Tool")
+            if toolAncestor then
+                local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+                if humanoid then humanoid:EquipTool(toolAncestor) end
+            end
+        end
+    end)
+end
+startAutoScanRaycast()
+
+-- === INVENTORY & WORKSPACE TOOL PICKUP ===
 local function getInventoryItems()
     local tools = {}
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
     local myChar = LocalPlayer.Character
 
-    -- Scans both Backpack and current Character model
     if backpack then
         for _, item in ipairs(backpack:GetChildren()) do
             if item:IsA("Tool") then table.insert(tools, item.Name) end
@@ -357,27 +419,61 @@ end
 local function equipItemByName(itemName)
     local myChar = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
-    if not myChar or not backpack then return false end
+    if not myChar then return false end
     local humanoid = myChar:FindFirstChildOfClass("Humanoid")
     if not humanoid then return false end
 
     local lowerName = itemName:lower()
     
-    -- Check backpack first
-    for _, tool in ipairs(backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
-            humanoid:EquipTool(tool)
-            return true, tool.Name
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
+                humanoid:EquipTool(tool)
+                return true, tool.Name
+            end
         end
     end
-    
-    -- Check if tool is already equipped in character model
+
     for _, tool in ipairs(myChar:GetChildren()) do
         if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
             return true, tool.Name
         end
     end
+
+    -- Scans Workspace to find and pick up dropped tools matching keyword
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if myHRP then
+        local closestTool = nil
+        local shortestDist = 150
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Tool") and obj.Name:lower():find(lowerName) then
+                local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+                if handle then
+                    local dist = (handle.Position - myHRP.Position).Magnitude
+                    if dist < shortestDist then
+                        shortestDist = dist
+                        closestTool = {Tool = obj, Position = handle.Position}
+                    end
+                end
+            end
+        end
+        if closestTool then
+            navigateToPosition(closestTool.Position, false, nil, closestTool.Tool)
+            return true, closestTool.Tool.Name
+        end
+    end
     
+    return false
+end
+
+local function unequipTools()
+    local myChar = LocalPlayer.Character
+    if not myChar then return false end
+    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid:UnequipTools()
+        return true
+    end
     return false
 end
 
@@ -457,7 +553,6 @@ local function findObjectByKeywords(speakerPlayer, textPrompt)
                     if dist < shortestDist then
                         shortestDist = dist
                         
-                        -- Target exact Seat object inside chairs
                         local seatTarget = obj:IsA("Seat") or obj:IsA("VehicleSeat")
                         if not seatTarget and obj:IsA("Model") then
                             local foundSeat = obj:FindFirstChildWhichIsA("Seat", true) or obj:FindFirstChildWhichIsA("VehicleSeat", true)
@@ -568,14 +663,79 @@ local function queryAI(promptText, senderName, contextData)
     return "[Debug Error: " .. lastError .. "]"
 end
 
--- === MESSAGE PROCESSOR ===
+-- === MULTI-COMMAND PARSER & MESSAGE PROCESSOR ===
+local function executeSubCommand(player, commandText)
+    local lowerCmd = commandText:lower()
+
+    if lowerCmd:find("jump") then
+        local myChar = LocalPlayer.Character
+        if myChar then
+            local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+            if humanoid then humanoid.Jump = true end
+        end
+        return
+    end
+
+    if lowerCmd:find("put") and (lowerCmd:find("away") or lowerCmd:find("back")) or lowerCmd:find("unequip") then
+        unequipTools()
+        return
+    end
+
+    local pickItem = lowerCmd:match("pick up%s+(.+)") or lowerCmd:match("take out the%s+(.+)") or lowerCmd:match("equip the%s+(.+)") or lowerCmd:match("hold the%s+(.+)") or lowerCmd:match("take out%s+(.+)")
+    if pickItem then
+        equipItemByName(pickItem)
+        return
+    end
+
+    if lowerCmd:find("use the") or lowerCmd:find("use item") or lowerCmd:find("activate tool") or lowerCmd:find("swing") then
+        useEquippedItem()
+        return
+    end
+
+    if lowerCmd:find("follow me") or lowerCmd:find("%$follow") then
+        startFollowingPlayer(player)
+        return
+    elseif lowerCmd:find("come to me") or lowerCmd:find("come here") or lowerCmd:find("walk to me") then
+        stopMovement()
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            navigateToPosition(player.Character.HumanoidRootPart.Position, false, nil, nil)
+        end
+        return
+    elseif lowerCmd:find("stop follow") or lowerCmd:find("stay") then
+        stopMovement()
+        return
+    end
+
+    local targetPlayerName = lowerCmd:match("go to%s+(%w+)") or lowerCmd:match("walk to%s+(%w+)") or lowerCmd:match("follow%s+(%w+)")
+    if targetPlayerName then
+        if targetPlayerName == "me" or targetPlayerName == "us" then
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                stopMovement()
+                navigateToPosition(player.Character.HumanoidRootPart.Position, false, nil, nil)
+            end
+        else
+            local targetPlayer = findPlayerByName(targetPlayerName)
+            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                stopMovement()
+                navigateToPosition(targetPlayer.Character.HumanoidRootPart.Position, false, nil, nil)
+            end
+        end
+        return
+    end
+
+    local detectedObj = findObjectByKeywords(player, commandText)
+    if detectedObj then
+        stopMovement()
+        navigateToPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance, detectedObj.IsTool and detectedObj.Instance or nil)
+    end
+end
+
 local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
     local senderName = player.DisplayName or player.Name
 
     if not botEnabled or player == LocalPlayer then return end
 
-    -- Mode Commands ($ prefixes & keyword matches)
     if lowerMsg:find("%$stop") then
         stopMovement()
         sendMessage("Stopped following! ♡")
@@ -609,62 +769,29 @@ local function processIncomingMessage(player, messageText)
         lastActiveUser = player
         lastActiveTime = tick()
 
-        -- Item Command Triggers
-        local takeItem = lowerMsg:match("take out the%s+(.+)") or lowerMsg:match("equip the%s+(.+)") or lowerMsg:match("hold the%s+(.+)") or lowerMsg:match("take out (%w+)")
-        local useItem = lowerMsg:find("use the") or lowerMsg:find("activate tool") or lowerMsg:find("swing")
-
-        if takeItem then
-            local success, itemName = equipItemByName(takeItem)
-            if success then
-                sendMessage("Equipped " .. itemName .. "! ♡")
-            else
-                sendMessage("I don't have " .. takeItem .. " in my backpack!")
-            end
-            return
-        elseif useItem then
-            local success, itemName = useEquippedItem()
-            if success then
-                sendMessage("Used " .. itemName .. "!")
-            else
-                sendMessage("I'm not holding any item to use!")
-            end
-            return
-        end
-
-        -- Navigation & Target Commands (Chairs, Locations, Players)
-        local detectedObj = findObjectByKeywords(player, messageText)
-
-        if lowerMsg:find("follow me") or lowerMsg:find("%$follow") then
-            startFollowingPlayer(player)
-        elseif lowerMsg:find("come to me") or lowerMsg:find("come here") or lowerMsg:find("walk to me") then
-            stopMovement()
-            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                navigateToPosition(player.Character.HumanoidRootPart.Position, false, nil, nil)
-            end
-        elseif lowerMsg:find("stop follow") or lowerMsg:find("stay") then
-            stopMovement()
-        elseif detectedObj then
-            stopMovement()
-            navigateToPosition(detectedObj.Position, detectedObj.IsSeat, detectedObj.Instance, detectedObj.IsTool and detectedObj.Instance or nil)
-        else
-            local targetName = lowerMsg:match("follow%s+(%w+)") or lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("walk to%s+(%w+)")
-            if targetName and targetName ~= "me" and targetName ~= "us" then
-                local foundPlayer = findPlayerByName(targetName)
-                if foundPlayer then
-                    startFollowingPlayer(foundPlayer)
+        -- Multi-Command Segment Splitting ("and then", "and", ",")
+        local cleanCommandText = messageText:gsub("hey silent", ""):gsub("silent", "")
+        local subCommands = {}
+        for segment in cleanCommandText:gmatch("[^,]+") do
+            for subSegment in segment:gmatch("[^and then]+") do
+                if #subSegment:gsub("%s+", "") > 0 then
+                    table.insert(subCommands, subSegment)
                 end
             end
         end
 
-        -- Inspect Environment & Query AI
+        task.spawn(function()
+            for _, subCmd in ipairs(subCommands) do
+                executeSubCommand(player, subCmd)
+            end
+        end)
+
         local contextInfo = inspectSpeakerContext(player)
         isProcessing = true
         StatusLabel.Text = "Status: Replying to " .. senderName .. "..."
 
         task.spawn(function()
-            local cleanPrompt = messageText:gsub("hey silent", ""):gsub("silent", "")
-            local reply = queryAI(cleanPrompt, senderName, contextInfo)
-
+            local reply = queryAI(cleanCommandText, senderName, contextInfo)
             if reply and reply ~= "" then 
                 sendMessage(reply) 
             end
