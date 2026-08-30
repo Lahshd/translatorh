@@ -28,7 +28,6 @@ end)
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
--- Fixed model list to prevent looping through broken/slow endpoints
 local MODEL_FALLBACKS = {
     "openrouter/auto"
 }
@@ -42,6 +41,7 @@ local followingPlayer = nil
 local activePathTask = nil
 local currentAnimationTrack = nil
 local navigationVersion = 0
+local lastProcessedMessageId = ""
 
 local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 10 words. Do not output thinking or meta remarks."
 
@@ -185,8 +185,9 @@ local function visualizePath(waypoints)
 
     for i, wp in ipairs(waypoints) do
         local node = Instance.new("Part")
-        node.Size = Vector3.new(0.6, 0.6, 0.6)
-        node.Position = wp.Position
+        node.Name = "PathNode"
+        node.Size = Vector3.new(1, 1, 1)
+        node.Position = wp.Position + Vector3.new(0, 0.5, 0)
         node.Shape = Enum.PartType.Ball
         node.Color = Color3.fromRGB(0, 255, 180)
         node.Material = Enum.Material.Neon
@@ -196,14 +197,18 @@ local function visualizePath(waypoints)
 
         if i > 1 then
             local prevWp = waypoints[i - 1]
-            local beamPart = Instance.new("Part")
-            beamPart.Size = Vector3.new(0.15, 0.15, (wp.Position - prevWp.Position).Magnitude)
-            beamPart.CFrame = CFrame.new(prevWp.Position:Lerp(wp.Position, 0.5), wp.Position)
-            beamPart.Color = Color3.fromRGB(0, 200, 255)
-            beamPart.Material = Enum.Material.Neon
-            beamPart.Anchored = true
-            beamPart.CanCollide = false
-            beamPart.Parent = pathFolder
+            local dist = (wp.Position - prevWp.Position).Magnitude
+            if dist > 0.1 then
+                local beamPart = Instance.new("Part")
+                beamPart.Name = "PathLine"
+                beamPart.Size = Vector3.new(0.3, 0.3, dist)
+                beamPart.CFrame = CFrame.new(prevWp.Position:Lerp(wp.Position, 0.5) + Vector3.new(0, 0.5, 0), wp.Position + Vector3.new(0, 0.5, 0))
+                beamPart.Color = Color3.fromRGB(0, 200, 255)
+                beamPart.Material = Enum.Material.Neon
+                beamPart.Anchored = true
+                beamPart.CanCollide = false
+                beamPart.Parent = pathFolder
+            end
         end
     end
 end
@@ -261,7 +266,7 @@ local function playEmote(emoteQuery)
     end
 end
 
--- === MOVEMENT ENGINE WITH FIXED STOP & 5-STUD DRIFT REPATH ===
+-- === UNSTICK RAYCAST & NAVIGATION ENGINE ===
 local function stopMovement()
     followingPlayer = nil
     navigationVersion = navigationVersion + 1
@@ -288,6 +293,17 @@ StopFollowBtn.MouseButton1Click:Connect(function()
     sendMessage("Stopped following! ♡")
 end)
 
+local function isStuckInWall(myHRP, targetVec)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = RaycastParamsFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    
+    local lookDir = (targetVec - myHRP.Position).Unit
+    local rayResult = workspace:Raycast(myHRP.Position, lookDir * 3, rayParams)
+    
+    return rayResult ~= nil
+end
+
 local function navigateToPosition(targetPos, targetObject)
     stopEmote()
     navigationVersion = navigationVersion + 1
@@ -313,9 +329,10 @@ local function navigateToPosition(targetPos, targetObject)
             if navigationVersion ~= currentVersion then return false end
             
             local path = PathfindingService:CreatePath({
-                AgentRadius = 2.5,
+                AgentRadius = 1.8,
                 AgentHeight = 5,
-                AgentCanJump = true
+                AgentCanJump = true,
+                WaypointSpacing = 3
             })
 
             local success = pcall(function() path:ComputeAsync(myHRP.Position, targetPos) end)
@@ -335,17 +352,25 @@ local function navigateToPosition(targetPos, targetObject)
                     local waypointStartTime = tick()
                     local reached = false
 
-                    while tick() - waypointStartTime < 3.5 do
+                    while tick() - waypointStartTime < 3 do
                         if navigationVersion ~= currentVersion then return false end
                         
                         local distToWaypoint = (myHRP.Position - waypoint.Position).Magnitude
-                        if distToWaypoint < 3.5 then
+                        if distToWaypoint < 3 then
                             reached = true
                             break
                         end
 
-                        -- Auto-repath if bot drifts more than 5 studs off track
-                        if (myHRP.Position - waypoint.Position).Magnitude > 5 then
+                        -- Raycast obstruction check / wall corner un-stick
+                        if isStuckInWall(myHRP, waypoint.Position) then
+                            humanoid.Jump = true
+                            humanoid:MoveTo(myHRP.Position + (myHRP.CFrame.RightVector * 4))
+                            task.wait(0.3)
+                            return computeAndRunPath()
+                        end
+
+                        -- 5-Stud Drift Detection
+                        if distToWaypoint > 5 then
                             return computeAndRunPath()
                         end
 
@@ -359,7 +384,7 @@ local function navigateToPosition(targetPos, targetObject)
                 return true
             else
                 humanoid:MoveTo(targetPos)
-                task.wait(1.5)
+                task.wait(1)
                 return (myHRP.Position - targetPos).Magnitude < 6
             end
         end
@@ -556,55 +581,53 @@ local function executeSubCommands(player, fullMessage)
     end)
 end
 
--- === SINGLE-REQUEST AI INTEGRATION ===
+-- === SINGLE-THREADED LOCKED AI INTEGRATION ===
 local function queryAI(promptText, senderName)
-    if not request or isProcessingAI then return end
+    if not request then return nil end
     
     local fullPrompt = senderName .. ": " .. promptText
     local finalReply = nil
 
-    for i = 1, #MODEL_FALLBACKS do
-        local modelToUse = MODEL_FALLBACKS[i]
-        local payload = HttpService:JSONEncode({
-            model = modelToUse,
-            max_tokens = 40,
-            temperature = 0.7,
-            messages = {
-                { role = "system", content = Modes[currentModeIndex].Prompt },
-                { role = "user", content = fullPrompt }
-            }
+    local payload = HttpService:JSONEncode({
+        model = MODEL_FALLBACKS[1],
+        max_tokens = 40,
+        temperature = 0.7,
+        messages = {
+            { role = "system", content = Modes[currentModeIndex].Prompt },
+            { role = "user", content = fullPrompt }
+        }
+    })
+
+    local success, response = pcall(function()
+        return request({
+            Url = OPENROUTER_URL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["Authorization"] = "Bearer " .. OPENROUTER_API_KEY:gsub("%s+", "")
+            },
+            Body = payload
         })
+    end)
 
-        local success, response = pcall(function()
-            return request({
-                Url = OPENROUTER_URL,
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json",
-                    ["Authorization"] = "Bearer " .. OPENROUTER_API_KEY:gsub("%s+", "")
-                },
-                Body = payload
-            })
-        end)
-
-        if success and response and response.StatusCode == 200 and response.Body then
-            local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
-            if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
-                local rawContent = data.choices[1].message.content
-                if type(rawContent) == "string" and #rawContent > 0 then
-                    finalReply = rawContent:gsub("<think>.-</think>", ""):gsub("%b[]", ""):gsub('^"', ''):gsub('"$', ''):gsub("^%s*(.-)%s*$", "%1")
-                    break
-                end
+    if success and response and response.StatusCode == 200 and response.Body then
+        local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
+        if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
+            local rawContent = data.choices[1].message.content
+            if type(rawContent) == "string" and #rawContent > 0 then
+                finalReply = rawContent:gsub("<think>.-</think>", ""):gsub("%b[]", ""):gsub('^"', ''):gsub('"$', ''):gsub("^%s*(.-)%s*$", "%1")
             end
         end
-        task.wait(0.5)
     end
 
     return finalReply
 end
 
-local function processIncomingMessage(player, messageText)
-    if not botEnabled or player == LocalPlayer then return end
+local function processIncomingMessage(player, messageText, messageId)
+    if not botEnabled or player == LocalPlayer or isProcessingAI then return end
+    if messageId and messageId == lastProcessedMessageId then return end
+    if messageId then lastProcessedMessageId = messageId end
+
     local lowerMsg = messageText:lower()
 
     if lowerMsg:find("tsun") or lowerMsg:find("tsud") then
@@ -631,7 +654,6 @@ local function processIncomingMessage(player, messageText)
     end
 
     if lowerMsg:find("silent") or lowerMsg:find("bot") then
-        if isProcessingAI then return end
         isProcessingAI = true
 
         executeSubCommands(player, lowerMsg)
@@ -639,6 +661,7 @@ local function processIncomingMessage(player, messageText)
         task.spawn(function()
             local reply = queryAI(messageText, player.DisplayName or player.Name)
             if reply then sendMessage(reply) end
+            task.wait(1)
             isProcessingAI = false
         end)
     end
@@ -648,17 +671,17 @@ end
 pcall(function()
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
         TextChatService.MessageReceived:Connect(function(textChatMessage)
-            if textChatMessage and textChatMessage.TextSource then
+            if textChatMessage and textChatMessage.TextSource and textChatMessage.Status == Enum.ChatMessageStatus.Success then
                 local player = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
-                if player then processIncomingMessage(player, textChatMessage.Text) end
+                if player then processIncomingMessage(player, textChatMessage.Text, textChatMessage.MessageId) end
             end
         end)
     else
         Players.PlayerAdded:Connect(function(p)
-            p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+            p.Chatted:Connect(function(msg) processIncomingMessage(p, msg, nil) end)
         end)
         for _, p in ipairs(Players:GetPlayers()) do
-            p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+            p.Chatted:Connect(function(msg) processIncomingMessage(p, msg, nil) end)
         end
     end
 end)
