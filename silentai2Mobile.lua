@@ -14,6 +14,50 @@ end
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
+-- === GLOBAL TEARDOWN (INSTANCE KILLER) ===
+local env = getgenv and getgenv() or _G
+
+if env.SilentBotCleanup then
+    pcall(function() env.SilentBotCleanup() end)
+    task.wait(0.2)
+end
+
+local isScriptAlive = true
+local scriptConnections = {}
+
+env.SilentBotCleanup = function()
+    isScriptAlive = false
+    
+    if env.SilentBotActiveTask then
+        pcall(function() task.cancel(env.SilentBotActiveTask) end)
+        env.SilentBotActiveTask = nil
+    end
+
+    for _, conn in ipairs(scriptConnections) do
+        if conn and conn.Connected then
+            pcall(function() conn:Disconnect() end)
+        end
+    end
+    scriptConnections = {}
+
+    local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
+    if oldFolder then oldFolder:Destroy() end
+
+    local CoreGui = game:GetService("CoreGui")
+    local uiParent = (gethui and gethui()) or CoreGui or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui"))
+
+    if uiParent then
+        for _, child in ipairs(uiParent:GetChildren()) do
+            if child.Name == "SilentAIBotNative" then child:Destroy() end
+        end
+    end
+    if LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") then
+        for _, child in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+            if child.Name == "SilentAIBotNative" then child:Destroy() end
+        end
+    end
+end
+
 pcall(function()
     for _, child in ipairs(PlayerGui:GetChildren()) do
         if child.Name == "SilentAIBotNative" then
@@ -120,6 +164,52 @@ local function playEmote(emoteQuery)
     end
 end
 
+-- === VISUAL PATH SYSTEM (PATH LINES & RAYCASTING) ===
+local function clearPathVisuals()
+    local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
+    if oldFolder then oldFolder:Destroy() end
+end
+
+local function visualizePath(waypoints)
+    clearPathVisuals()
+    local pathFolder = Instance.new("Folder")
+    pathFolder.Name = "SilentPathVisuals"
+    pathFolder.Parent = workspace
+
+    for i, wp in ipairs(waypoints) do
+        -- Waypoint Node Sphere
+        local sphere = Instance.new("SelectionBox")
+        local nodePart = Instance.new("Part")
+        nodePart.Size = Vector3.new(0.8, 0.8, 0.8)
+        nodePart.Position = wp.Position + Vector3.new(0, 0.3, 0)
+        nodePart.Anchored = true
+        nodePart.CanCollide = false
+        nodePart.Transparency = 1
+        nodePart.Parent = pathFolder
+
+        sphere.Adornee = nodePart
+        sphere.Color3 = Color3.fromRGB(0, 255, 200)
+        sphere.LineThickness = 0.05
+        sphere.Parent = pathFolder
+
+        -- Neon Connector Line
+        if i > 1 then
+            local prevWp = waypoints[i - 1]
+            local dist = (wp.Position - prevWp.Position).Magnitude
+            if dist > 0.1 then
+                local line = Instance.new("Part")
+                line.Size = Vector3.new(0.3, 0.3, dist)
+                line.CFrame = CFrame.new(prevWp.Position:Lerp(wp.Position, 0.5) + Vector3.new(0, 0.3, 0), wp.Position + Vector3.new(0, 0.3, 0))
+                line.Color = Color3.fromRGB(0, 170, 255)
+                line.Material = Enum.Material.Neon
+                line.Anchored = true
+                line.CanCollide = false
+                line.Parent = pathFolder
+            end
+        end
+    end
+end
+
 -- === NATIVE GUI ENGINE ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
@@ -156,7 +246,7 @@ MainCorner.Parent = MainFrame
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "   🌸 Silent AI (Smart Bot)"
+TitleLabel.Text = "    🌸 Silent AI (Smart Bot)"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
@@ -204,25 +294,30 @@ StopFollowBtn.Font = Enum.Font.GothamBold
 StopFollowBtn.TextSize = 12
 StopFollowBtn.Parent = MainFrame
 
-ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+table.insert(scriptConnections, ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end))
 
-BotToggleBtn.MouseButton1Click:Connect(function()
+table.insert(scriptConnections, BotToggleBtn.MouseButton1Click:Connect(function()
     botEnabled = not botEnabled
     BotToggleBtn.Text = botEnabled and "BOT: ON" or "BOT: OFF"
     BotToggleBtn.BackgroundColor3 = botEnabled and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(160, 50, 50)
     StatusLabel.Text = botEnabled and "Status: ACTIVE" or "Status: INACTIVE"
-end)
+end))
 
-ModeBtn.MouseButton1Click:Connect(function()
+table.insert(scriptConnections, ModeBtn.MouseButton1Click:Connect(function()
     currentModeIndex = (currentModeIndex % #Modes) + 1
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
-end)
+end))
 
 -- === MOVEMENT ENGINE ===
 local function stopMovement()
     followingPlayer = nil
     if followConnection then followConnection:Disconnect() followConnection = nil end
-    if activePathTask then task.cancel(activePathTask) activePathTask = nil end
+    if activePathTask or env.SilentBotActiveTask then 
+        pcall(function() task.cancel(activePathTask or env.SilentBotActiveTask) end) 
+        activePathTask = nil 
+        env.SilentBotActiveTask = nil
+    end
+    clearPathVisuals()
     stopEmote()
     
     local myChar = LocalPlayer.Character
@@ -235,16 +330,17 @@ local function stopMovement()
     end
 end
 
-StopFollowBtn.MouseButton1Click:Connect(function()
+table.insert(scriptConnections, StopFollowBtn.MouseButton1Click:Connect(function()
     stopMovement()
     sendMessage("Stopped following! ♡")
-end)
+end))
 
 local function navigateToPosition(targetPos, targetTool)
     stopEmote()
     if activePathTask then task.cancel(activePathTask) activePathTask = nil end
     
     activePathTask = task.spawn(function()
+        env.SilentBotActiveTask = activePathTask
         local myChar = LocalPlayer.Character
         if not myChar then return end
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
@@ -257,16 +353,30 @@ local function navigateToPosition(targetPos, targetTool)
         local success = pcall(function() path:ComputeAsync(myHRP.Position, targetPos) end)
 
         if success and path.Status == Enum.PathStatus.Success then
-            for _, waypoint in ipairs(path:GetWaypoints()) do
+            local waypoints = path:GetWaypoints()
+            visualizePath(waypoints)
+
+            for _, waypoint in ipairs(waypoints) do
+                if not isScriptAlive then break end
                 if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
                 humanoid:MoveTo(waypoint.Position)
                 humanoid.MoveToFinished:Wait()
             end
         else
+            -- Raycasting Fallback Visual Line
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterAncestorsOfTypes = {myChar}
+            raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+            local rayResult = workspace:Raycast(myHRP.Position, (targetPos - myHRP.Position), raycastParams)
+            local finalVisualPos = rayResult and rayResult.Position or targetPos
+
+            visualizePath({{Position = myHRP.Position}, {Position = finalVisualPos}})
             humanoid:MoveTo(targetPos)
             humanoid.MoveToFinished:Wait()
         end
 
+        clearPathVisuals()
         humanoid:MoveTo(targetPos)
         task.wait(0.5)
 
@@ -281,7 +391,7 @@ local function startFollowingPlayer(targetPlayer)
     followingPlayer = targetPlayer
 
     followConnection = RunService.Heartbeat:Connect(function()
-        if not followingPlayer or not followingPlayer.Character then return end
+        if not isScriptAlive or not followingPlayer or not followingPlayer.Character then return end
         local targetHRP = followingPlayer.Character:FindFirstChild("HumanoidRootPart")
         local myChar = LocalPlayer.Character
         if not myChar or not targetHRP then return end
@@ -291,12 +401,31 @@ local function startFollowingPlayer(targetPlayer)
 
         humanoid.WalkSpeed = RUN_SPEED
         local distance = (myHRP.Position - targetHRP.Position).Magnitude
+        
+        -- Raycasting obstruction check to keep direct path clear
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterAncestorsOfType = {myChar, followingPlayer.Character}
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+        local direction = (targetHRP.Position - myHRP.Position)
+        local rayResult = workspace:Raycast(myHRP.Position, direction, raycastParams)
+
+        if rayResult then
+            -- Path obstructed by obstacle: draw visual ray trace line
+            visualizePath({{Position = myHRP.Position}, {Position = rayResult.Position}})
+        else
+            -- Direct clear path line to player
+            visualizePath({{Position = myHRP.Position}, {Position = targetHRP.Position}})
+        end
+
         if distance > 5 then
             humanoid:MoveTo(targetHRP.Position)
         else
+            clearPathVisuals()
             humanoid:MoveTo(myHRP.Position)
         end
     end)
+    table.insert(scriptConnections, followConnection)
 end
 
 -- === INVENTORY & SPAWNER SCANNER ===
@@ -436,6 +565,7 @@ local function executeSubCommands(player, fullMessage)
         end
 
         for _, stepCmd in ipairs(chain) do
+            if not isScriptAlive then break end
             processSingleAction(player, stepCmd)
             task.wait(1.2)
         end
@@ -487,7 +617,7 @@ end
 
 -- === INCOMING MESSAGE PROCESSOR ===
 local function processIncomingMessage(player, messageText)
-    if not botEnabled or player == LocalPlayer then return end
+    if not isScriptAlive or not botEnabled or player == LocalPlayer then return end
     local lowerMsg = messageText:lower()
 
     if lowerMsg:find("tsundere") then
@@ -508,7 +638,7 @@ local function processIncomingMessage(player, messageText)
             isProcessing = true
             task.spawn(function()
                 local reply = queryAI(messageText, player.DisplayName or player.Name)
-                if reply then sendMessage(reply) end
+                if reply and isScriptAlive then sendMessage(reply) end
                 isProcessing = false
             end)
         end
@@ -518,18 +648,18 @@ end
 -- === CHAT HOOKS ===
 pcall(function()
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-        TextChatService.MessageReceived:Connect(function(textChatMessage)
+        table.insert(scriptConnections, TextChatService.MessageReceived:Connect(function(textChatMessage)
             if textChatMessage and textChatMessage.TextSource then
                 local player = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
                 if player then processIncomingMessage(player, textChatMessage.Text) end
             end
-        end)
+        end))
     else
-        Players.PlayerAdded:Connect(function(p)
-            p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
-        end)
+        table.insert(scriptConnections, Players.PlayerAdded:Connect(function(p)
+            table.insert(scriptConnections, p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end))
+        end))
         for _, p in ipairs(Players:GetPlayers()) do
-            p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+            table.insert(scriptConnections, p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end))
         end
     end
 end)
