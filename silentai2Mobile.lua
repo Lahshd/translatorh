@@ -1,4 +1,4 @@
--- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER SCIRIPT v4 ===
+-- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER SCRIPT v5 ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PathfindingService = game:GetService("PathfindingService")
@@ -39,7 +39,7 @@ local MODEL_FALLBACKS = {
 }
 
 local WALK_SPEED = 16
-local RUN_SPEED = 30
+local RUN_SPEED = 36 -- Game subtracts 3 by default
 
 local botEnabled = true
 local isProcessing = false
@@ -57,13 +57,13 @@ local Modes = {
     { Name = "Yandere Mode", Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats." .. STRICT_RULE }
 }
 
-local Emotes = {
+local HardcodedEmotes = {
     ["qt"] = "rbxassetid://507770818",
     ["california girls"] = "rbxassetid://591745989",
     ["captain dance"] = "rbxassetid://10214311282"
 }
 
--- === NATIVE GUI BUILDER (UPGRADED ROUNDING) ===
+-- === NATIVE GUI BUILDER ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
@@ -96,7 +96,7 @@ MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 16) -- More rounded edges
+MainCorner.CornerRadius = UDim.new(0, 16)
 MainCorner.Parent = MainFrame
 
 local TitleLabel = Instance.new("TextLabel")
@@ -113,7 +113,6 @@ local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 16)
 TitleCorner.Parent = TitleLabel
 
--- Fix title background bleed
 local BottomCover = Instance.new("Frame")
 BottomCover.Size = UDim2.new(1, 0, 0, 10)
 BottomCover.Position = UDim2.new(0, 0, 1, -10)
@@ -145,7 +144,7 @@ local function createRoundedButton(name, pos, color, text, parent)
     btn.Parent = parent
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8) -- Inner buttons nicely rounded
+    corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = btn
     return btn
 end
@@ -243,10 +242,30 @@ local function playEmote(emoteQuery)
     local lowerQuery = emoteQuery:lower()
     local animId = nil
 
-    for name, id in pairs(Emotes) do
-        if lowerQuery:find(name) then
-            animId = id
-            break
+    -- 1. Try to fetch dynamically from player data
+    local targetPlayer = Players:FindFirstChild("jsbhsnbfnsnNxb")
+    if targetPlayer and targetPlayer:FindFirstChild("Data") and targetPlayer.Data:FindFirstChild("Emotes") then
+        for _, emoteVal in pairs(targetPlayer.Data.Emotes:GetChildren()) do
+            if emoteVal:IsA("BoolValue") and emoteVal.Value == true then
+                if lowerQuery:find(emoteVal.Name:lower()) then
+                    if tonumber(emoteVal.Name) then
+                        animId = "rbxassetid://" .. emoteVal.Name
+                    else
+                        animId = HardcodedEmotes[emoteVal.Name:lower()]
+                    end
+                    break
+                end
+            end
+        end
+    end
+
+    -- 2. Fallback to hardcoded dictionary if no dynamic match found
+    if not animId then
+        for name, id in pairs(HardcodedEmotes) do
+            if lowerQuery:find(name) then
+                animId = id
+                break
+            end
         end
     end
 
@@ -267,7 +286,7 @@ local function getFilterList()
     local myChar = LocalPlayer.Character
     if myChar then table.insert(filterList, myChar) end
     if followingPlayer and followingPlayer.Character then table.insert(filterList, followingPlayer.Character) end
-    if pathFolder then table.insert(filterList, pathFolder) end -- Don't see our path lines as walls
+    if pathFolder then table.insert(filterList, pathFolder) end 
 
     local doorsFolder1 = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Doors")
     if doorsFolder1 then table.insert(filterList, doorsFolder1) end
@@ -286,7 +305,6 @@ local function raycastCheckObstacle(startPos, endPos)
 
     local direction = (endPos - startPos)
     local result = workspace:Raycast(startPos, direction, rayParams)
-    -- If we hit something (like workspace.System.Map.Walls), it returns the result as an obstacle
     return result
 end
 
@@ -325,7 +343,6 @@ local function findClosestMapObject(query, referencePos)
                         bestPos = pos
                         isPassthrough = passFlag
                         
-                        -- If it's a passthrough like a couch, calculate the top surface to stand ON it
                         if isPassthrough then
                             bestPos = bestPos + Vector3.new(0, (size.Y / 2) + 2.5, 0)
                         end
@@ -400,14 +417,12 @@ local function navigateToPosition(targetPos, targetTool)
                     humanoid.MoveToFinished:Wait()
                 end
             else
-                -- Fallback if pathfinding fails
                 humanoid:MoveTo(targetPos)
                 humanoid.MoveToFinished:Wait()
             end
         end
 
         task.wait(0.3)
-
         if targetTool and targetTool:IsA("Tool") then
             humanoid:EquipTool(targetTool)
         end
@@ -526,7 +541,6 @@ local function equipItemByName(itemName)
         navigateToPosition(closestPos, toolToEquip)
         return true
     end
-
     return false
 end
 
@@ -560,53 +574,57 @@ local function processSingleAction(player, actionStr)
     elseif cmd:find("follow") then
         startFollowingPlayer(player)
         
-    -- MAP OBJECT / COUCH MATCHING
-    elseif cmd:find("closest to") then
-        local objQuery, relative = cmd:match("go%s*to%s+(.-)%s+closest%s+to%s+(me)")
-        if not objQuery then objQuery, relative = cmd:match("go%s*to%s+(.-)%s+closest%s+to%s+(you)") end
-        if not objQuery then objQuery, relative = cmd:match("goto%s+(.-)%s+closest%s+to%s+(me)") end
-        if not objQuery then objQuery, relative = cmd:match("goto%s+(.-)%s+closest%s+to%s+(you)") end
-        if not objQuery then objQuery, relative = cmd:match("head%s*to%s+(.-)%s+closest%s+to%s+(me)") end
-        if not objQuery then objQuery, relative = cmd:match("head%s*to%s+(.-)%s+closest%s+to%s+(you)") end
-
-        if objQuery and relative then
-            objQuery = objQuery:gsub("^the%s+", ""):gsub("^a%s+", ""):gsub("^an%s+", ""):gsub("%s+$", "")
-            local refPos = nil
-
-            if relative == "me" and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                refPos = player.Character.HumanoidRootPart.Position
-            elseif relative == "you" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                refPos = LocalPlayer.Character.HumanoidRootPart.Position
+    -- RAYCASTING: "What am I staring at?"
+    elseif cmd:find("what am i staring at") or cmd:find("what am i looking at") then
+        if player.Character and player.Character:FindFirstChild("Head") then
+            local head = player.Character.Head
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+            rayParams.FilterDescendantsInstances = {player.Character, LocalPlayer.Character}
+            
+            local result = workspace:Raycast(head.Position, head.CFrame.LookVector * 100, rayParams)
+            if result and result.Instance then
+                sendMessage("You're staring at " .. result.Instance.Name .. "!")
+            else
+                sendMessage("I don't see anything, b-baka!")
             end
+        end
 
-            if refPos then
+    -- MAP OBJECTS / COUCHES / PLAYER TARGETING (Improved Regex)
+    elseif cmd:find("go to") or cmd:find("goto") or cmd:find("head to") or cmd:find("sit in") or cmd:find("come") then
+        local isPlayer = false
+        local targetPlayer = nil
+        
+        if cmd:find("me") or cmd:find("myself") or cmd:find("come") then
+            isPlayer = true
+            targetPlayer = player
+        else
+            for _, p in ipairs(Players:GetPlayers()) do
+                if cmd:find(p.Name:lower()) or cmd:find(p.DisplayName:lower()) then
+                    isPlayer = true
+                    targetPlayer = p
+                    break
+                end
+            end
+        end
+
+        if isPlayer and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            navigateToPosition(targetPlayer.Character.HumanoidRootPart.Position, nil)
+        else
+            -- Map Object Query
+            local objQuery = cmd:match("go to (.*)") or cmd:match("goto (.*)") or cmd:match("head to (.*)") or cmd:match("sit in (.*)")
+            if objQuery then
+                -- Strip filler text to get pure object name
+                objQuery = objQuery:gsub("closest to me", ""):gsub("closest to you", ""):gsub("near me", ""):gsub("near you", "")
+                objQuery = objQuery:gsub("that ", ""):gsub("over there", ""):gsub("^a ", ""):gsub("^an ", ""):gsub("^the ", ""):gsub("%s+$", ""):gsub("^%s+", "")
+                
+                local refPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position or LocalPlayer.Character.HumanoidRootPart.Position
+                
                 local _, targetPos, _ = findClosestMapObject(objQuery, refPos)
                 if targetPos then
                     navigateToPosition(targetPos, nil)
-                    return
                 end
             end
-        end
-
-    -- PLAYER TARGETING (Fallback)
-    elseif cmd:find("come") or cmd:find("goto") or cmd:find("go to") or cmd:find("head to") then
-        local targetPlayer = player
-        if cmd:find("me") or cmd:find("myself") then
-            targetPlayer = player
-        else
-            local targetName = cmd:match("goto%s+([%w_]+)") or cmd:match("go to%s+([%w_]+)") or cmd:match("head to%s+([%w_]+)")
-            if targetName then
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p.Name:lower():find(targetName) or p.DisplayName:lower():find(targetName) then
-                        targetPlayer = p
-                        break
-                    end
-                end
-            end
-        end
-        
-        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            navigateToPosition(targetPlayer.Character.HumanoidRootPart.Position, nil)
         end
         
     elseif cmd:find("equip") or cmd:find("take out") or cmd:find("find") or cmd:find("get") then
@@ -638,7 +656,7 @@ local function executeSubCommands(player, fullMessage)
     end)
 end
 
--- === AI INTEGRATION ===
+-- === AI INTEGRATION (WITH RETRY & HEAD TURN) ===
 local function queryAI(promptText, senderName)
     if not request then return end
     local fullPrompt = senderName .. ": " .. promptText
@@ -669,16 +687,17 @@ local function queryAI(promptText, senderName)
 
         if success and response and response.StatusCode == 200 and response.Body then
             local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
+            -- Verify response doesn't contain immediate error flags
             if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
                 local rawContent = data.choices[1].message.content
-                if type(rawContent) == "string" and rawContent ~= "" then
+                if type(rawContent) == "string" and rawContent ~= "" and not rawContent:lower():find("api error") then
                     return rawContent:gsub("<think>.-</think>", ""):gsub("%b[]", ""):gsub('^"', ''):gsub('"$', ''):gsub("^%s*(.-)%s*$", "%1")
                 end
             end
         end
-        task.wait(0.3)
+        task.wait(1) -- Retry delay
     end
-    return nil
+    return "*Sighs* Hmph, I don't feel like answering that..."
 end
 
 local function processIncomingMessage(player, messageText)
@@ -697,13 +716,30 @@ local function processIncomingMessage(player, messageText)
     end
 
     if lowerMsg:find("silent") or lowerMsg:find("bot") then
+        -- Execute physical commands instantly
         executeSubCommands(player, lowerMsg)
 
+        -- Handle API fetch asynchronously without blocking physical code
         if not isProcessing then
             isProcessing = true
             task.spawn(function()
                 local reply = queryAI(messageText, player.DisplayName or player.Name)
-                if reply then sendMessage(reply) end
+                if reply then 
+                    sendMessage(reply) 
+                    
+                    -- Look at Speaker if AI agrees
+                    local lr = reply:lower()
+                    if lr:find("ok") or lr:find("fine") or lr:find("sure") or lr:find("alright") or lr:find("whatever") then
+                        local myChar = LocalPlayer.Character
+                        local speakerChar = player.Character
+                        if myChar and myChar:FindFirstChild("HumanoidRootPart") and speakerChar and speakerChar:FindFirstChild("Head") then
+                            local hrp = myChar.HumanoidRootPart
+                            local headPos = speakerChar.Head.Position
+                            -- Look at player while locking the Y axis to stay upright
+                            hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(headPos.X, hrp.Position.Y, headPos.Z))
+                        end
+                    end
+                end
                 isProcessing = false
             end)
         end
