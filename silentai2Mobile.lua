@@ -1,7 +1,6 @@
 -- === DELTA & UNIVERSAL INITIALIZATION ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
@@ -43,8 +42,7 @@ env.SilentBotCleanup = function()
     local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
     if oldFolder then oldFolder:Destroy() end
 
-    local CoreGui = game:GetService("CoreGui")
-    local uiParent = (gethui and gethui()) or CoreGui or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui"))
+    local uiParent = (gethui and gethui()) or game:GetService("CoreGui") or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui"))
 
     if uiParent then
         for _, child in ipairs(uiParent:GetChildren()) do
@@ -52,19 +50,11 @@ env.SilentBotCleanup = function()
         end
     end
     if LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") then
-        for _, child in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+        for _, child in ipairs(PlayerGui:GetChildren()) do
             if child.Name == "SilentAIBotNative" then child:Destroy() end
         end
     end
 end
-
-pcall(function()
-    for _, child in ipairs(PlayerGui:GetChildren()) do
-        if child.Name == "SilentAIBotNative" then
-            child:Destroy()
-        end
-    end
-end)
 
 -- Configuration & Constants
 local OPENROUTER_API_KEY = "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"
@@ -78,12 +68,11 @@ local MODEL_FALLBACKS = {
 }
 
 local WALK_SPEED = 16
-local RUN_SPEED = 30
+local RUN_SPEED = 28
 
 local botEnabled = true
 local isProcessing = false
 local followingPlayer = nil
-local followConnection = nil
 local activePathTask = nil
 local currentAnimationTrack = nil
 
@@ -164,43 +153,38 @@ local function playEmote(emoteQuery)
     end
 end
 
--- === VISUAL PATH SYSTEM (PATH LINES & RAYCASTING) ===
+-- === ALWAYS-VISIBLE PATH DRAWING ENGINE ===
 local function clearPathVisuals()
     local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
     if oldFolder then oldFolder:Destroy() end
 end
 
-local function visualizePath(waypoints)
+local function visualizePath(nodes)
     clearPathVisuals()
     local pathFolder = Instance.new("Folder")
     pathFolder.Name = "SilentPathVisuals"
     pathFolder.Parent = workspace
 
-    for i, wp in ipairs(waypoints) do
-        -- Waypoint Node Sphere
-        local sphere = Instance.new("SelectionBox")
+    for i, pos in ipairs(nodes) do
+        -- Waypoint Node Marker
         local nodePart = Instance.new("Part")
-        nodePart.Size = Vector3.new(0.8, 0.8, 0.8)
-        nodePart.Position = wp.Position + Vector3.new(0, 0.3, 0)
+        nodePart.Size = Vector3.new(0.6, 0.6, 0.6)
+        nodePart.Position = pos + Vector3.new(0, 0.2, 0)
+        nodePart.Color = Color3.fromRGB(0, 255, 200)
+        nodePart.Material = Enum.Material.Neon
         nodePart.Anchored = true
         nodePart.CanCollide = false
-        nodePart.Transparency = 1
         nodePart.Parent = pathFolder
 
-        sphere.Adornee = nodePart
-        sphere.Color3 = Color3.fromRGB(0, 255, 200)
-        sphere.LineThickness = 0.05
-        sphere.Parent = pathFolder
-
-        -- Neon Connector Line
+        -- Connected Path Line
         if i > 1 then
-            local prevWp = waypoints[i - 1]
-            local dist = (wp.Position - prevWp.Position).Magnitude
-            if dist > 0.1 then
+            local prevPos = nodes[i - 1]
+            local dist = (pos - prevPos).Magnitude
+            if dist > 0.05 then
                 local line = Instance.new("Part")
-                line.Size = Vector3.new(0.3, 0.3, dist)
-                line.CFrame = CFrame.new(prevWp.Position:Lerp(wp.Position, 0.5) + Vector3.new(0, 0.3, 0), wp.Position + Vector3.new(0, 0.3, 0))
-                line.Color = Color3.fromRGB(0, 170, 255)
+                line.Size = Vector3.new(0.25, 0.25, dist)
+                line.CFrame = CFrame.new(prevPos:Lerp(pos, 0.5) + Vector3.new(0, 0.2, 0), pos + Vector3.new(0, 0.2, 0))
+                line.Color = Color3.fromRGB(0, 150, 255)
                 line.Material = Enum.Material.Neon
                 line.Anchored = true
                 line.CanCollide = false
@@ -208,6 +192,124 @@ local function visualizePath(waypoints)
             end
         end
     end
+end
+
+-- === BARITONE-STYLE A* & RAYCAST NAVIGATION ENGINE ===
+local GRID_SIZE = 3.5
+
+local function checkRay(startPos, targetPos, ignoreChar)
+    local params = RaycastParams.new()
+    params.FilterAncestorsOfTypes = {ignoreChar}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local res = workspace:Raycast(startPos, targetPos - startPos, params)
+    return res
+end
+
+local function getGroundPos(pos, ignoreChar)
+    local params = RaycastParams.new()
+    params.FilterAncestorsOfTypes = {ignoreChar}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local res = workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -15, 0), params)
+    if res then
+        return res.Position
+    end
+    return nil
+end
+
+local function calculateBaritonePath(startPos, targetPos)
+    local myChar = LocalPlayer.Character
+    if not myChar then return {targetPos} end
+
+    -- 1. Direct line of sight raycast check
+    if not checkRay(startPos + Vector3.new(0, 2, 0), targetPos + Vector3.new(0, 2, 0), myChar) then
+        return {startPos, targetPos}
+    end
+
+    -- 2. Grid Node A* Search for Complex Terrain
+    local openSet = {}
+    local cameFrom = {}
+    local gScore = {}
+    local fScore = {}
+
+    local startNode = Vector3.new(math.floor(startPos.X / GRID_SIZE + 0.5) * GRID_SIZE, startPos.Y, math.floor(startPos.Z / GRID_SIZE + 0.5) * GRID_SIZE)
+    
+    local function nodeKey(v)
+        return math.floor(v.X) .. "," .. math.floor(v.Y) .. "," .. math.floor(v.Z)
+    end
+
+    table.insert(openSet, startNode)
+    gScore[nodeKey(startNode)] = 0
+    fScore[nodeKey(startNode)] = (startNode - targetPos).Magnitude
+
+    local directions = {
+        Vector3.new(GRID_SIZE, 0, 0), Vector3.new(-GRID_SIZE, 0, 0),
+        Vector3.new(0, 0, GRID_SIZE), Vector3.new(0, 0, -GRID_SIZE),
+        Vector3.new(GRID_SIZE, 0, GRID_SIZE), Vector3.new(-GRID_SIZE, 0, -GRID_SIZE),
+        Vector3.new(-GRID_SIZE, 0, GRID_SIZE), Vector3.new(GRID_SIZE, 0, -GRID_SIZE)
+    }
+
+    local iterations = 0
+    while #openSet > 0 and iterations < 180 do
+        iterations = iterations + 1
+        
+        -- Get lowest fScore node
+        local currentIndex = 1
+        local current = openSet[1]
+        for i = 2, #openSet do
+            if (fScore[nodeKey(openSet[i])] or math.huge) < (fScore[nodeKey(current)] or math.huge) then
+                current = openSet[i]
+                currentIndex = i
+            end
+        end
+
+        if (current - targetPos).Magnitude <= GRID_SIZE * 1.5 then
+            -- Reconstruct Path
+            local path = {targetPos}
+            local currKey = nodeKey(current)
+            while cameFrom[currKey] do
+                table.insert(path, 1, current)
+                current = cameFrom[currKey]
+                currKey = nodeKey(current)
+            end
+            table.insert(path, 1, startPos)
+            return path
+        end
+
+        table.remove(openSet, currentIndex)
+
+        for _, dir in ipairs(directions) do
+            local neighborPos = current + dir
+            local ground = getGroundPos(neighborPos, myChar)
+
+            if ground and math.abs(ground.Y - current.Y) < 6 then
+                neighborPos = Vector3.new(neighborPos.X, ground.Y + 2.5, neighborPos.Z)
+
+                -- Obstacle Collision Raycast
+                local obsCheck = checkRay(current + Vector3.new(0, 1.5, 0), neighborPos + Vector3.new(0, 1.5, 0), myChar)
+                if not obsCheck then
+                    local tentativeG = (gScore[nodeKey(current)] or math.huge) + (neighborPos - current).Magnitude
+                    local nKey = nodeKey(neighborPos)
+
+                    if tentativeG < (gScore[nKey] or math.huge) then
+                        cameFrom[nKey] = current
+                        gScore[nKey] = tentativeG
+                        fScore[nKey] = tentativeG + (neighborPos - targetPos).Magnitude
+
+                        local exists = false
+                        for _, v in ipairs(openSet) do
+                            if nodeKey(v) == nKey then exists = true break end
+                        end
+                        if not exists then
+                            table.insert(openSet, neighborPos)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Fallback simple path
+    return {startPos, targetPos}
 end
 
 -- === NATIVE GUI ENGINE ===
@@ -308,10 +410,9 @@ table.insert(scriptConnections, ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end))
 
--- === MOVEMENT ENGINE ===
+-- === MOVEMENT & EXECUTION ENGINE ===
 local function stopMovement()
     followingPlayer = nil
-    if followConnection then followConnection:Disconnect() followConnection = nil end
     if activePathTask or env.SilentBotActiveTask then 
         pcall(function() task.cancel(activePathTask or env.SilentBotActiveTask) end) 
         activePathTask = nil 
@@ -336,8 +437,7 @@ table.insert(scriptConnections, StopFollowBtn.MouseButton1Click:Connect(function
 end))
 
 local function navigateToPosition(targetPos, targetTool)
-    stopEmote()
-    if activePathTask then task.cancel(activePathTask) activePathTask = nil end
+    stopMovement()
     
     activePathTask = task.spawn(function()
         env.SilentBotActiveTask = activePathTask
@@ -349,36 +449,39 @@ local function navigateToPosition(targetPos, targetTool)
 
         humanoid.WalkSpeed = RUN_SPEED
 
-        local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true })
-        local success = pcall(function() path:ComputeAsync(myHRP.Position, targetPos) end)
+        local computedNodes = calculateBaritonePath(myHRP.Position, targetPos)
+        visualizePath(computedNodes)
 
-        if success and path.Status == Enum.PathStatus.Success then
-            local waypoints = path:GetWaypoints()
-            visualizePath(waypoints)
+        for _, waypointPos in ipairs(computedNodes) do
+            if not isScriptAlive then break end
 
-            for _, waypoint in ipairs(waypoints) do
-                if not isScriptAlive then break end
-                if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
-                humanoid:MoveTo(waypoint.Position)
-                humanoid.MoveToFinished:Wait()
+            -- Raycast jump detection
+            local obstacle = checkRay(myHRP.Position, waypointPos, myChar)
+            if obstacle or waypointPos.Y > myHRP.Position.Y + 1.2 then
+                humanoid.Jump = true
             end
-        else
-            -- Raycasting Fallback Visual Line
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterAncestorsOfTypes = {myChar}
-            raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 
-            local rayResult = workspace:Raycast(myHRP.Position, (targetPos - myHRP.Position), raycastParams)
-            local finalVisualPos = rayResult and rayResult.Position or targetPos
+            humanoid:MoveTo(waypointPos)
+            
+            local startTime = tick()
+            local lastPos = myHRP.Position
 
-            visualizePath({{Position = myHRP.Position}, {Position = finalVisualPos}})
-            humanoid:MoveTo(targetPos)
-            humanoid.MoveToFinished:Wait()
+            while isScriptAlive and (myHRP.Position - waypointPos).Magnitude > 3.0 do
+                task.wait(0.05)
+                if tick() - startTime > 2.5 then break end
+
+                -- Anti-Stuck auto jump
+                if (myHRP.Position - lastPos).Magnitude < 0.1 then
+                    humanoid.Jump = true
+                    break
+                end
+                lastPos = myHRP.Position
+            end
         end
 
         clearPathVisuals()
         humanoid:MoveTo(targetPos)
-        task.wait(0.5)
+        task.wait(0.3)
 
         if targetTool and targetTool:IsA("Tool") then
             humanoid:EquipTool(targetTool)
@@ -390,42 +493,42 @@ local function startFollowingPlayer(targetPlayer)
     stopMovement()
     followingPlayer = targetPlayer
 
-    followConnection = RunService.Heartbeat:Connect(function()
-        if not isScriptAlive or not followingPlayer or not followingPlayer.Character then return end
-        local targetHRP = followingPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local myChar = LocalPlayer.Character
-        if not myChar or not targetHRP then return end
-        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-        local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-        if not myHRP or not humanoid then return end
+    activePathTask = task.spawn(function()
+        env.SilentBotActiveTask = activePathTask
+        while isScriptAlive and followingPlayer do
+            local myChar = LocalPlayer.Character
+            local targetChar = followingPlayer.Character
+            if myChar and targetChar and targetChar:FindFirstChild("HumanoidRootPart") and myChar:FindFirstChild("HumanoidRootPart") then
+                local myHRP = myChar.HumanoidRootPart
+                local targetHRP = targetChar.HumanoidRootPart
+                local humanoid = myChar:FindFirstChildOfClass("Humanoid")
 
-        humanoid.WalkSpeed = RUN_SPEED
-        local distance = (myHRP.Position - targetHRP.Position).Magnitude
-        
-        -- Raycasting obstruction check to keep direct path clear
-        local raycastParams = RaycastParams.new()
-        raycastParams.FilterAncestorsOfType = {myChar, followingPlayer.Character}
-        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                if humanoid then
+                    humanoid.WalkSpeed = RUN_SPEED
+                    local dist = (myHRP.Position - targetHRP.Position).Magnitude
 
-        local direction = (targetHRP.Position - myHRP.Position)
-        local rayResult = workspace:Raycast(myHRP.Position, direction, raycastParams)
+                    if dist > 5 then
+                        local nodes = calculateBaritonePath(myHRP.Position, targetHRP.Position)
+                        visualizePath(nodes)
 
-        if rayResult then
-            -- Path obstructed by obstacle: draw visual ray trace line
-            visualizePath({{Position = myHRP.Position}, {Position = rayResult.Position}})
-        else
-            -- Direct clear path line to player
-            visualizePath({{Position = myHRP.Position}, {Position = targetHRP.Position}})
+                        if nodes[2] then
+                            if checkRay(myHRP.Position, nodes[2], myChar) or nodes[2].Y > myHRP.Position.Y + 1.2 then
+                                humanoid.Jump = true
+                            end
+                            humanoid:MoveTo(nodes[2])
+                        else
+                            humanoid:MoveTo(targetHRP.Position)
+                        end
+                    else
+                        clearPathVisuals()
+                        humanoid:MoveTo(myHRP.Position)
+                    end
+                end
+            end
+            task.wait(0.15)
         end
-
-        if distance > 5 then
-            humanoid:MoveTo(targetHRP.Position)
-        else
-            clearPathVisuals()
-            humanoid:MoveTo(myHRP.Position)
-        end
+        clearPathVisuals()
     end)
-    table.insert(scriptConnections, followConnection)
 end
 
 -- === INVENTORY & SPAWNER SCANNER ===
