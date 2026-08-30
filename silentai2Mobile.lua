@@ -27,8 +27,7 @@ end)
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-local WALK_SPEED = 16
-local RUN_SPEED = 28
+local RUN_SPEED = 24
 
 local botEnabled = true
 local isProcessingGlobal = false
@@ -54,7 +53,7 @@ local Modes = {
     }
 }
 
--- === NATIVE GUI BUILDER ===
+-- === GUI BUILDER ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
@@ -104,7 +103,7 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
--- === PATH VISUALIZER ===
+-- === VISUAL PATH SYSTEM ===
 local function clearPathVisuals()
     local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
     if oldFolder then oldFolder:Destroy() end
@@ -163,7 +162,7 @@ local function sendMessage(msg)
     end)
 end
 
--- === MOVEMENT ENGINE ===
+-- === NAVIGATION ENGINE WITH UNTIL-REACHED LOOP ===
 local function stopMovement()
     navigationVersion = navigationVersion + 1
     if activePathTask then
@@ -177,7 +176,7 @@ local function stopMovement()
     end
 end
 
-local function navigateToPosition(targetPos)
+local function navigateToTargetPlayer(targetPlayer)
     stopMovement()
     navigationVersion = navigationVersion + 1
     local currentVersion = navigationVersion
@@ -191,54 +190,56 @@ local function navigateToPosition(targetPos)
 
         humanoid.WalkSpeed = RUN_SPEED
 
-        local path = PathfindingService:CreatePath({ AgentRadius = 1.0, AgentHeight = 4.5, AgentCanJump = true })
-        local success, _ = pcall(function() path:ComputeAsync(myHRP.Position, targetPos) end)
+        -- LOOP UNTIL BOT COMES WITHIN 4 STUDS OF TARGET
+        while navigationVersion == currentVersion do
+            if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
+            local targetHRP = targetPlayer.Character.HumanoidRootPart
+            local distance = (myHRP.Position - targetHRP.Position).Magnitude
 
-        if success and path.Status == Enum.PathStatus.Success then
-            local waypoints = path:GetWaypoints()
-            visualizePath(waypoints)
+            if distance <= 4 then
+                break -- REACHED TARGET DESTINATION
+            end
 
-            for _, waypoint in ipairs(waypoints) do
-                if navigationVersion ~= currentVersion then break end
-                if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+            local path = PathfindingService:CreatePath({ AgentRadius = 1.0, AgentHeight = 4.5, AgentCanJump = true })
+            local success, _ = pcall(function() path:ComputeAsync(myHRP.Position, targetHRP.Position) end)
 
-                humanoid:MoveTo(waypoint.Position)
-                local startT = tick()
-                local lastPos = myHRP.Position
+            if success and path.Status == Enum.PathStatus.Success then
+                local waypoints = path:GetWaypoints()
+                visualizePath(waypoints)
 
-                while tick() - startT < 2.5 do
+                for _, waypoint in ipairs(waypoints) do
                     if navigationVersion ~= currentVersion then break end
-                    if (myHRP.Position - waypoint.Position).Magnitude < 3.5 then break end
-                    
-                    task.wait(0.2)
-                    if (myHRP.Position - lastPos).Magnitude < 0.2 then
-                        humanoid.Jump = true
-                        myHRP.CFrame = myHRP.CFrame * CFrame.new(2, 0, -1)
-                        humanoid:MoveTo(waypoint.Position)
+                    if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+
+                    humanoid:MoveTo(waypoint.Position)
+                    local lastPos = myHRP.Position
+                    local waypointStartTime = tick()
+
+                    while tick() - waypointStartTime < 1.5 do
+                        if navigationVersion ~= currentVersion then break end
+                        if (myHRP.Position - waypoint.Position).Magnitude < 3 then break end
+                        
+                        task.wait(0.1)
+                        -- Wall recovery: slide around corner if stuck
+                        if (myHRP.Position - lastPos).Magnitude < 0.1 then
+                            humanoid.Jump = true
+                            myHRP.CFrame = myHRP.CFrame * CFrame.new(2, 0, -1)
+                            break
+                        end
+                        lastPos = myHRP.Position
                     end
-                    lastPos = myHRP.Position
                 end
+            else
+                -- Fallback direct movement
+                visualizePath({{Position = myHRP.Position}, {Position = targetHRP.Position}})
+                humanoid:MoveTo(targetHRP.Position)
+                task.wait(0.5)
             end
-        else
-            -- Direct Fallback Visual & Movement
-            visualizePath({{Position = myHRP.Position}, {Position = targetPos}})
-            local startT = tick()
-            local lastPos = myHRP.Position
-
-            while (myHRP.Position - targetPos).Magnitude > 5 and tick() - startT < 8 do
-                if navigationVersion ~= currentVersion then break end
-                humanoid:MoveTo(targetPos)
-                task.wait(0.3)
-
-                if (myHRP.Position - lastPos).Magnitude < 0.4 then
-                    humanoid.Jump = true
-                    myHRP.CFrame = myHRP.CFrame * CFrame.new(3, 0, -2)
-                end
-                lastPos = myHRP.Position
-            end
+            task.wait(0.1)
         end
 
         clearPathVisuals()
+        if myHRP then humanoid:MoveTo(myHRP.Position) end
     end)
 end
 
@@ -281,7 +282,7 @@ local function queryAI(promptText, senderName)
     return nil
 end
 
--- === CHAT EVENT HOOK ===
+-- === STRICT SINGLE CHAT HOOK ===
 local function processIncomingMessage(player, messageText)
     if not botEnabled or player == LocalPlayer then return end
     if isProcessingGlobal or (tick() - lastChatTimestamp < 4) then return end
@@ -293,9 +294,7 @@ local function processIncomingMessage(player, messageText)
         lastChatTimestamp = tick()
 
         if lowerMsg:find("come") or lowerMsg:find("goto") or lowerMsg:find("here") or lowerMsg:find("follow") then
-            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                navigateToPosition(player.Character.HumanoidRootPart.Position)
-            end
+            navigateToTargetPlayer(player)
         elseif lowerMsg:find("stop") then
             stopMovement()
         end
@@ -305,12 +304,13 @@ local function processIncomingMessage(player, messageText)
             if reply then 
                 sendMessage(reply) 
             end
-            task.wait(1)
+            task.wait(1.5)
             isProcessingGlobal = false
         end)
     end
 end
 
+-- CONNECT TO ONLY ONE ACTIVE CHAT SERVICE
 if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
     TextChatService.MessageReceived:Connect(function(textChatMessage)
         if textChatMessage and textChatMessage.TextSource then
