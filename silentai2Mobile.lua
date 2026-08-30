@@ -67,6 +67,104 @@ local Emotes = {
     ["captain dance"] = "rbxassetid://10214311282"
 }
 
+-- === NATIVE GUI ENGINE ===
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SilentAIBotNative"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999999
+ScreenGui.Parent = PlayerGui
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 45, 0, 45)
+ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 25, 40)
+ToggleBtn.Text = "🌸"
+ToggleBtn.TextSize = 22
+ToggleBtn.Active = true
+ToggleBtn.Parent = ScreenGui
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.Parent = ToggleBtn
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 240, 0, 200)
+MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
+MainFrame.Visible = true
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, 0, 0, 30)
+TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+TitleLabel.Text = "   🌸 Silent AI (Smart Bot)"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 12
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = MainFrame
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
+StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
+StatusLabel.Text = "Status: ACTIVE\nListening for commands..."
+StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextSize = 11
+StatusLabel.TextWrapped = true
+StatusLabel.Parent = MainFrame
+
+local BotToggleBtn = Instance.new("TextButton")
+BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
+BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
+BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+BotToggleBtn.Text = "BOT: ON"
+BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+BotToggleBtn.Font = Enum.Font.GothamBold
+BotToggleBtn.TextSize = 12
+BotToggleBtn.Parent = MainFrame
+
+local ModeBtn = Instance.new("TextButton")
+ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
+ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
+ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
+ModeBtn.Text = "Mode: OwO Mode"
+ModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ModeBtn.Font = Enum.Font.GothamBold
+ModeBtn.TextSize = 12
+ModeBtn.Parent = MainFrame
+
+local StopFollowBtn = Instance.new("TextButton")
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
+StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
+StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
+StopFollowBtn.Text = "Stop Following"
+StopFollowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StopFollowBtn.Font = Enum.Font.GothamBold
+StopFollowBtn.TextSize = 12
+StopFollowBtn.Parent = MainFrame
+
+ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+
+BotToggleBtn.MouseButton1Click:Connect(function()
+    botEnabled = not botEnabled
+    BotToggleBtn.Text = botEnabled and "BOT: ON" or "BOT: OFF"
+    BotToggleBtn.BackgroundColor3 = botEnabled and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(160, 50, 50)
+    StatusLabel.Text = botEnabled and "Status: ACTIVE" or "Status: INACTIVE"
+end)
+
+ModeBtn.MouseButton1Click:Connect(function()
+    currentModeIndex = (currentModeIndex % #Modes) + 1
+    ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
+end)
+
 -- === PATH VISUALIZER ===
 local function clearPathVisuals()
     if pathFolder then
@@ -192,6 +290,11 @@ local function stopMovement()
     end
 end
 
+StopFollowBtn.MouseButton1Click:Connect(function()
+    stopMovement()
+    sendMessage("Stopped following! ♡")
+end)
+
 local function raycastCheckObstacle(startPos, endPos)
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -215,7 +318,6 @@ local function navigateToPosition(targetPos, targetTool)
 
         humanoid.WalkSpeed = RUN_SPEED
 
-        -- Check direct raycast clear line
         local obstacle = raycastCheckObstacle(myHRP.Position, targetPos)
         if not obstacle then
             humanoid:MoveTo(targetPos)
@@ -313,7 +415,6 @@ local function equipItemByName(itemName)
 
     local lowerName = itemName:lower()
     
-    -- Inventory Check
     if backpack then
         for _, tool in ipairs(backpack:GetChildren()) do
             if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
@@ -323,7 +424,6 @@ local function equipItemByName(itemName)
         end
     end
 
-    -- Generic item / spawner scan
     local isGeneric = lowerName:find("an item") or lowerName:find("a item") or lowerName:find("item") or lowerName:find("anything")
     local closestObj = nil
     local closestPos = nil
@@ -503,10 +603,13 @@ local function processIncomingMessage(player, messageText)
 
     if lowerMsg:find("tsundere") then
         currentModeIndex = 2
+        ModeBtn.Text = "Mode: Tsundere Mode"
     elseif lowerMsg:find("owo") then
         currentModeIndex = 1
+        ModeBtn.Text = "Mode: OwO Mode"
     elseif lowerMsg:find("yandere") then
         currentModeIndex = 3
+        ModeBtn.Text = "Mode: Yandere Mode"
     end
 
     if lowerMsg:find("silent") or lowerMsg:find("bot") then
