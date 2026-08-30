@@ -39,9 +39,9 @@ local RUN_SPEED = 30
 local botEnabled = true
 local isProcessing = false
 local followingPlayer = nil
-local followConnection = nil
 local activePathTask = nil
 local currentAnimationTrack = nil
+local pathFolder = nil
 
 local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 12 words. Do not output thinking, reasoning, or meta remarks."
 
@@ -66,6 +66,45 @@ local Emotes = {
     ["california girls"] = "rbxassetid://591745989",
     ["captain dance"] = "rbxassetid://10214311282"
 }
+
+-- === PATH VISUALIZER ===
+local function clearPathVisuals()
+    if pathFolder then
+        pathFolder:Destroy()
+        pathFolder = nil
+    end
+end
+
+local function visualizePath(waypoints)
+    clearPathVisuals()
+    pathFolder = Instance.new("Folder")
+    pathFolder.Name = "SilentPathVisuals"
+    pathFolder.Parent = workspace
+
+    for i, wp in ipairs(waypoints) do
+        local node = Instance.new("Part")
+        node.Size = Vector3.new(0.6, 0.6, 0.6)
+        node.Position = wp.Position
+        node.Shape = Enum.PartType.Ball
+        node.Color = Color3.fromRGB(0, 255, 180)
+        node.Material = Enum.Material.Neon
+        node.Anchored = true
+        node.CanCollide = false
+        node.Parent = pathFolder
+
+        if i > 1 then
+            local prevWp = waypoints[i - 1]
+            local beamPart = Instance.new("Part")
+            beamPart.Size = Vector3.new(0.15, 0.15, (wp.Position - prevWp.Position).Magnitude)
+            beamPart.CFrame = CFrame.new(prevWp.Position:Lerp(wp.Position, 0.5), wp.Position)
+            beamPart.Color = Color3.fromRGB(0, 200, 255)
+            beamPart.Material = Enum.Material.Neon
+            beamPart.Anchored = true
+            beamPart.CanCollide = false
+            beamPart.Parent = pathFolder
+        end
+    end
+end
 
 -- === CHAT SENDER ===
 local function sendMessage(msg)
@@ -120,110 +159,28 @@ local function playEmote(emoteQuery)
     end
 end
 
--- === NATIVE GUI ENGINE ===
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SilentAIBotNative"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 999999
-ScreenGui.Parent = PlayerGui
+-- === DOOR & COLLISION FILTERING ===
+local function getDoorFilterList()
+    local filterList = {}
+    local myChar = LocalPlayer.Character
+    if myChar then table.insert(filterList, myChar) end
 
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 45, 0, 45)
-ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 25, 40)
-ToggleBtn.Text = "🌸"
-ToggleBtn.TextSize = 22
-ToggleBtn.Active = true
-ToggleBtn.Parent = ScreenGui
+    local doorsFolder1 = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Doors")
+    if doorsFolder1 then table.insert(filterList, doorsFolder1) end
 
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(1, 0)
-ToggleCorner.Parent = ToggleBtn
+    local mapFolder = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Map")
+    local doorsFolder2 = mapFolder and mapFolder:FindFirstChild("Doors")
+    if doorsFolder2 then table.insert(filterList, doorsFolder2) end
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 240, 0, 200)
-MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
-MainFrame.Visible = true
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
+    return filterList
+end
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 10)
-MainCorner.Parent = MainFrame
-
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, 0, 0, 30)
-TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "   🌸 Silent AI (Smart Bot)"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 12
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = MainFrame
-
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
-StatusLabel.Text = "Status: ACTIVE\nListening for commands..."
-StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Font = Enum.Font.Gotham
-StatusLabel.TextSize = 11
-StatusLabel.TextWrapped = true
-StatusLabel.Parent = MainFrame
-
-local BotToggleBtn = Instance.new("TextButton")
-BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
-BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
-BotToggleBtn.Text = "BOT: ON"
-BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-BotToggleBtn.Font = Enum.Font.GothamBold
-BotToggleBtn.TextSize = 12
-BotToggleBtn.Parent = MainFrame
-
-local ModeBtn = Instance.new("TextButton")
-ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
-ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
-ModeBtn.Text = "Mode: OwO Mode"
-ModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ModeBtn.Font = Enum.Font.GothamBold
-ModeBtn.TextSize = 12
-ModeBtn.Parent = MainFrame
-
-local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
-StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
-StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
-StopFollowBtn.Text = "Stop Following"
-StopFollowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-StopFollowBtn.Font = Enum.Font.GothamBold
-StopFollowBtn.TextSize = 12
-StopFollowBtn.Parent = MainFrame
-
-ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
-
-BotToggleBtn.MouseButton1Click:Connect(function()
-    botEnabled = not botEnabled
-    BotToggleBtn.Text = botEnabled and "BOT: ON" or "BOT: OFF"
-    BotToggleBtn.BackgroundColor3 = botEnabled and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(160, 50, 50)
-    StatusLabel.Text = botEnabled and "Status: ACTIVE" or "Status: INACTIVE"
-end)
-
-ModeBtn.MouseButton1Click:Connect(function()
-    currentModeIndex = (currentModeIndex % #Modes) + 1
-    ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
-end)
-
--- === MOVEMENT ENGINE ===
+-- === MOVEMENT ENGINE (RAYCASTING + PATHFINDING) ===
 local function stopMovement()
     followingPlayer = nil
-    if followConnection then followConnection:Disconnect() followConnection = nil end
     if activePathTask then task.cancel(activePathTask) activePathTask = nil end
     stopEmote()
+    clearPathVisuals()
     
     local myChar = LocalPlayer.Character
     if myChar then
@@ -235,10 +192,15 @@ local function stopMovement()
     end
 end
 
-StopFollowBtn.MouseButton1Click:Connect(function()
-    stopMovement()
-    sendMessage("Stopped following! ♡")
-end)
+local function raycastCheckObstacle(startPos, endPos)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = getDoorFilterList()
+
+    local direction = (endPos - startPos)
+    local result = workspace:Raycast(startPos, direction, rayParams)
+    return result
+end
 
 local function navigateToPosition(targetPos, targetTool)
     stopEmote()
@@ -253,26 +215,43 @@ local function navigateToPosition(targetPos, targetTool)
 
         humanoid.WalkSpeed = RUN_SPEED
 
-        local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true })
-        local success = pcall(function() path:ComputeAsync(myHRP.Position, targetPos) end)
-
-        if success and path.Status == Enum.PathStatus.Success then
-            for _, waypoint in ipairs(path:GetWaypoints()) do
-                if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
-                humanoid:MoveTo(waypoint.Position)
-                humanoid.MoveToFinished:Wait()
-            end
-        else
+        -- Check direct raycast clear line
+        local obstacle = raycastCheckObstacle(myHRP.Position, targetPos)
+        if not obstacle then
             humanoid:MoveTo(targetPos)
             humanoid.MoveToFinished:Wait()
+        else
+            local path = PathfindingService:CreatePath({
+                AgentRadius = 2,
+                AgentHeight = 5,
+                AgentCanJump = true,
+                Costs = { Doors = 1 }
+            })
+            
+            local success = pcall(function() path:ComputeAsync(myHRP.Position, targetPos) end)
+
+            if success and path.Status == Enum.PathStatus.Success then
+                local waypoints = path:GetWaypoints()
+                visualizePath(waypoints)
+
+                for _, waypoint in ipairs(waypoints) do
+                    if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+                    humanoid:MoveTo(waypoint.Position)
+                    humanoid.MoveToFinished:Wait()
+                end
+            else
+                humanoid:MoveTo(targetPos)
+                humanoid.MoveToFinished:Wait()
+            end
         end
 
         humanoid:MoveTo(targetPos)
-        task.wait(0.5)
+        task.wait(0.3)
 
         if targetTool and targetTool:IsA("Tool") then
             humanoid:EquipTool(targetTool)
         end
+        clearPathVisuals()
     end)
 end
 
@@ -280,33 +259,51 @@ local function startFollowingPlayer(targetPlayer)
     stopMovement()
     followingPlayer = targetPlayer
 
-    followConnection = RunService.Heartbeat:Connect(function()
-        if not followingPlayer or not followingPlayer.Character then return end
-        local targetHRP = followingPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local myChar = LocalPlayer.Character
-        if not myChar or not targetHRP then return end
-        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-        local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-        if not myHRP or not humanoid then return end
+    activePathTask = task.spawn(function()
+        while followingPlayer and followingPlayer.Character do
+            local targetHRP = followingPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local myChar = LocalPlayer.Character
+            if not myChar or not targetHRP then break end
+            local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+            local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+            if not myHRP or not humanoid then break end
 
-        humanoid.WalkSpeed = RUN_SPEED
-        local distance = (myHRP.Position - targetHRP.Position).Magnitude
-        if distance > 5 then
-            humanoid:MoveTo(targetHRP.Position)
-        else
-            humanoid:MoveTo(myHRP.Position)
+            humanoid.WalkSpeed = RUN_SPEED
+            local distance = (myHRP.Position - targetHRP.Position).Magnitude
+
+            if distance > 6 then
+                local obstacle = raycastCheckObstacle(myHRP.Position, targetHRP.Position)
+                if not obstacle then
+                    humanoid:MoveTo(targetHRP.Position)
+                    task.wait(0.3)
+                else
+                    local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true })
+                    local success = pcall(function() path:ComputeAsync(myHRP.Position, targetHRP.Position) end)
+
+                    if success and path.Status == Enum.PathStatus.Success then
+                        local waypoints = path:GetWaypoints()
+                        visualizePath(waypoints)
+                        for i = 1, math.min(#waypoints, 4) do
+                            local wp = waypoints[i]
+                            if wp.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+                            humanoid:MoveTo(wp.Position)
+                            humanoid.MoveToFinished:Wait()
+                        end
+                    else
+                        humanoid:MoveTo(targetHRP.Position)
+                        task.wait(0.4)
+                    end
+                end
+            else
+                humanoid:MoveTo(myHRP.Position)
+                clearPathVisuals()
+                task.wait(0.5)
+            end
         end
     end)
 end
 
 -- === INVENTORY & SPAWNER SCANNER ===
-local function unequipTools()
-    local myChar = LocalPlayer.Character
-    if not myChar then return end
-    local humanoid = myChar:FindFirstChildOfClass("Humanoid")
-    if humanoid then humanoid:UnequipTools() end
-end
-
 local function equipItemByName(itemName)
     local myChar = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
@@ -316,6 +313,7 @@ local function equipItemByName(itemName)
 
     local lowerName = itemName:lower()
     
+    -- Inventory Check
     if backpack then
         for _, tool in ipairs(backpack:GetChildren()) do
             if tool:IsA("Tool") and tool.Name:lower():find(lowerName) then
@@ -325,7 +323,8 @@ local function equipItemByName(itemName)
         end
     end
 
-    local isGeneric = lowerName:find("item") or lowerName:find("anything") or lowerName:find("something")
+    -- Generic item / spawner scan
+    local isGeneric = lowerName:find("an item") or lowerName:find("a item") or lowerName:find("item") or lowerName:find("anything")
     local closestObj = nil
     local closestPos = nil
     local closestDist = math.huge
@@ -340,7 +339,7 @@ local function equipItemByName(itemName)
         for _, folder in ipairs(searchFolders) do
             for _, obj in ipairs(folder:GetDescendants()) do
                 local matches = isGeneric or obj.Name:lower():find(lowerName)
-                if matches then
+                if matches and obj ~= myChar and not obj:IsDescendantOf(myChar) then
                     local targetPos = nil
                     if obj:IsA("Tool") then
                         local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
@@ -378,7 +377,9 @@ local function useEquippedTool()
     local myChar = LocalPlayer.Character
     if not myChar then return end
     local tool = myChar:FindFirstChildOfClass("Tool")
-    if tool then tool:Activate() end
+    if tool then 
+        tool:Activate() 
+    end
 end
 
 -- === SINGLE ACTION DISPATCHER ===
@@ -392,26 +393,34 @@ local function processSingleAction(player, actionStr)
             if humanoid then humanoid.Jump = true end
         end
     elseif cmd:find("unequip") or cmd:find("put away") then
-        unequipTools()
+        local myChar = LocalPlayer.Character
+        if myChar then
+            local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+            if humanoid then humanoid:UnequipTools() end
+        end
     elseif cmd:find("use") then
         useEquippedTool()
     elseif cmd:find("emote") or cmd:find("dance") then
         playEmote(cmd)
     elseif cmd:find("follow") then
         startFollowingPlayer(player)
-    elseif cmd:find("come") or cmd:find("goto") or cmd:find("head to") then
+    elseif cmd:find("come") or cmd:find("goto") or cmd:find("go to") or cmd:find("head to") then
         local targetPlayer = player
-        local targetName = cmd:match("goto%s+([%w_]+)") or cmd:match("head to%s+([%w_]+)")
-        if targetName then
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p.Name:lower():find(targetName) or p.DisplayName:lower():find(targetName) then
-                    targetPlayer = p
-                    break
+        if cmd:find("me") or cmd:find("myself") then
+            targetPlayer = player
+        else
+            local targetName = cmd:match("goto%s+([%w_]+)") or cmd:match("go to%s+([%w_]+)") or cmd:match("head to%s+([%w_]+)")
+            if targetName then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Name:lower():find(targetName) or p.DisplayName:lower():find(targetName) then
+                        targetPlayer = p
+                        break
+                    end
                 end
             end
         end
-        stopMovement()
-        if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             navigateToPosition(targetPlayer.Character.HumanoidRootPart.Position, nil)
         end
     elseif cmd:find("equip") or cmd:find("take out") or cmd:find("find") or cmd:find("get") then
@@ -427,17 +436,19 @@ end
 -- === MULTI-COMMAND CHAINING ===
 local function executeSubCommands(player, fullMessage)
     task.spawn(function()
-        local rawCommands = fullMessage:split(" and ")
+        local cleanedMsg = fullMessage:gsub("and then", "then")
+        local rawCommands = cleanedMsg:split(" then ")
         local chain = {}
+        
         for _, segment in ipairs(rawCommands) do
-            for _, subSegment in ipairs(segment:split(" then ")) do
+            for _, subSegment in ipairs(segment:split(" and ")) do
                 table.insert(chain, subSegment)
             end
         end
 
         for _, stepCmd in ipairs(chain) do
             processSingleAction(player, stepCmd)
-            task.wait(1.2)
+            task.wait(1.5)
         end
     end)
 end
@@ -492,13 +503,10 @@ local function processIncomingMessage(player, messageText)
 
     if lowerMsg:find("tsundere") then
         currentModeIndex = 2
-        ModeBtn.Text = "Mode: Tsundere Mode"
     elseif lowerMsg:find("owo") then
         currentModeIndex = 1
-        ModeBtn.Text = "Mode: OwO Mode"
     elseif lowerMsg:find("yandere") then
         currentModeIndex = 3
-        ModeBtn.Text = "Mode: Yandere Mode"
     end
 
     if lowerMsg:find("silent") or lowerMsg:find("bot") then
