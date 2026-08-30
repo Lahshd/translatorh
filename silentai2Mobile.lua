@@ -76,6 +76,50 @@ local Modes = {
     { Name = "Yandere Mode", Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats." .. STRICT_RULE }
 }
 
+-- === NATIVE STATUS GUI SETUP ===
+local function createBotGUI()
+    local uiParent = (gethui and gethui()) or game:GetService("CoreGui") or PlayerGui
+    local old = uiParent:FindFirstChild("SilentAIBotNative")
+    if old then old:Destroy() end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "SilentAIBotNative"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = uiParent
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 200, 0, 70)
+    frame.Position = UDim2.new(0, 15, 0, 15)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = frame
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 25)
+    title.BackgroundTransparency = 1
+    title.Text = "Silent AI Bot [Active]"
+    title.TextColor3 = Color3.fromRGB(0, 255, 200)
+    title.TextSize = 14
+    title.Font = Enum.Font.GothamBold
+    title.Parent = frame
+
+    local modeLabel = Instance.new("TextLabel")
+    modeLabel.Name = "ModeLabel"
+    modeLabel.Size = UDim2.new(1, 0, 0, 35)
+    modeLabel.Position = UDim2.new(0, 0, 0, 25)
+    modeLabel.BackgroundTransparency = 1
+    modeLabel.Text = "Mode: " .. Modes[currentModeIndex].Name
+    modeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    modeLabel.TextSize = 12
+    modeLabel.Font = Enum.Font.Gotham
+    modeLabel.Parent = frame
+end
+createBotGUI()
+
 -- === CHAT ENGINE ===
 local function sendMessage(msg)
     if not msg or msg == "" then return end
@@ -90,26 +134,36 @@ local function sendMessage(msg)
     end)
 end
 
--- === SPATIAL AWARENESS & STRICT WALL FILTERS ===
+-- === ROBUST SPATIAL & WALL FILTERS (WITH FALLBACK) ===
 local function getWallFolder()
-    return workspace:FindFirstChild("System") 
-        and workspace.System:FindFirstChild("Map") 
-        and workspace.System.Map:FindFirstChild("Walls")
+    local sys = workspace:FindFirstChild("System")
+    local map = sys and sys:FindFirstChild("Map")
+    return map and map:FindFirstChild("Walls")
 end
 
 local function getWallParams()
     local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Include
     local wallsFolder = getWallFolder()
-    params.FilterDescendantsInstances = wallsFolder and {wallsFolder} or {}
+    if wallsFolder then
+        params.FilterType = Enum.RaycastFilterType.Include
+        params.FilterDescendantsInstances = {wallsFolder}
+    else
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {LocalPlayer.Character}
+    end
     return params
 end
 
 local function getWallOverlapParams()
     local params = OverlapParams.new()
-    params.FilterType = Enum.RaycastFilterType.Include
     local wallsFolder = getWallFolder()
-    params.FilterDescendantsInstances = wallsFolder and {wallsFolder} or {}
+    if wallsFolder then
+        params.FilterType = Enum.RaycastFilterType.Include
+        params.FilterDescendantsInstances = {wallsFolder}
+    else
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {LocalPlayer.Character}
+    end
     return params
 end
 
@@ -117,7 +171,9 @@ local function isNodeClear(pos)
     local params = getWallOverlapParams()
     local parts = workspace:GetPartBoundsInRadius(pos + Vector3.new(0, 3, 0), 2.2, params)
     for _, part in ipairs(parts) do
-        if part.CanCollide then return false end
+        if part.CanCollide and not (LocalPlayer.Character and part:IsDescendantOf(LocalPlayer.Character)) then 
+            return false 
+        end
     end
     return true
 end
@@ -133,6 +189,30 @@ local function getGroundPos(pos, ignoreChar)
         return res.Position
     end
     return nil
+end
+
+-- === PATH VISUALIZER (DEBUG LINE) ===
+local function visualizePath(nodes)
+    local old = workspace:FindFirstChild("SilentPathVisuals")
+    if old then old:Destroy() end
+    
+    local folder = Instance.new("Folder")
+    folder.Name = "SilentPathVisuals"
+    folder.Parent = workspace
+    
+    for i = 1, #nodes - 1 do
+        local p1 = nodes[i]
+        local p2 = nodes[i+1]
+        local part = Instance.new("Part")
+        part.Size = Vector3.new(0.4, 0.4, (p1 - p2).Magnitude)
+        part.CFrame = CFrame.new(p1:Lerp(p2, 0.5), p2)
+        part.Anchored = true
+        part.CanCollide = false
+        part.Transparency = 0.2
+        part.Color = Color3.fromRGB(0, 255, 255)
+        part.Material = Enum.Material.Neon
+        part.Parent = folder
+    end
 end
 
 -- === OBJECT FINDER (CHAIRS & COUCHES) ===
@@ -293,6 +373,7 @@ local function calculateCustomPath(startPos, targetPos)
         currKey = nodeKey(cameFrom[currKey])
     end
     table.insert(path, targetPos)
+    visualizePath(path)
     return path
 end
 
@@ -309,6 +390,9 @@ local function stopMovement()
         activeSteerConnection = nil
     end
     
+    local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
+    if oldFolder then oldFolder:Destroy() end
+
     local myChar = LocalPlayer.Character
     if myChar then
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
@@ -382,6 +466,8 @@ local function executePath(targetPos, isFollowing)
         
         if activeSteerConnection then activeSteerConnection:Disconnect() end
         currentWaypoint = nil
+        local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
+        if oldFolder then oldFolder:Destroy() end
         if humanoid then humanoid:MoveTo(myHRP.Position) end
     end)
 end
@@ -420,16 +506,15 @@ local function processSingleAction(player, actionStr)
                 local _, tPos, tHeight, isPass = findClosestObject(objQuery, refPos)
                 if tPos then
                     if isPass then
-                        -- Push final waypoint upward so the bot jumps ON the couch
                         tPos = tPos + Vector3.new(0, (tHeight / 2) + 1.5, 0)
                     end
                     executePath(tPos, false)
-                    return -- Exit out so it doesn't search for a player
+                    return 
                 end
             end
         end
         
-        -- Fallback: Player Targeting if no object matched
+        -- Fallback: Player Targeting
         local targetPlayer = player
         local targetName = cmd:match("goto%s+([%w_]+)") or cmd:match("go to%s+([%w_]+)")
         
