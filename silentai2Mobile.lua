@@ -13,12 +13,13 @@ end
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
+-- Unique session token for *this* specific execution only
 local SCRIPT_TAG_ID = "SILENT_BOT_TAG_" .. tostring(math.random(100000, 999999)) .. "_" .. tostring(os.clock())
 local GUI_NAME = "SilentAIBotNative"
 local env = getgenv and getgenv() or _G
 local uiParent = (gethui and gethui()) or game:GetService("CoreGui") or PlayerGui
 
--- === SINGLE-INSTANCE SWEEP ===
+-- === SAFE SINGLE-INSTANCE SWEEP ===
 local function purgeOldScriptInstances()
     if env.SilentBotCleanup then
         pcall(function() env.SilentBotCleanup() end)
@@ -30,9 +31,8 @@ local function purgeOldScriptInstances()
         for _, child in ipairs(container:GetChildren()) do
             if child.Name == GUI_NAME then
                 local tag = child:FindFirstChild("SilentBotInstanceTag")
-                if tag and tag:IsA("StringValue") and tag.Value ~= SCRIPT_TAG_ID then
-                    child:Destroy()
-                elseif not tag then
+                -- Only delete if it has a different tag value, or if it has no tag at all
+                if not tag or (tag:IsA("StringValue") and tag.Value ~= SCRIPT_TAG_ID) then
                     child:Destroy()
                 end
             end
@@ -58,10 +58,14 @@ env.SilentBotCleanup = function()
         if conn and conn.Connected then pcall(function() conn:Disconnect() end) end
     end
     scriptConnections = {}
+    
+    -- Clean up ONLY our own GUI instance by matching SCRIPT_TAG_ID
     for _, child in ipairs(uiParent:GetChildren()) do
         if child.Name == GUI_NAME then
             local tag = child:FindFirstChild("SilentBotInstanceTag")
-            if tag and tag.Value == SCRIPT_TAG_ID then child:Destroy() end
+            if tag and tag.Value == SCRIPT_TAG_ID then 
+                child:Destroy() 
+            end
         end
     end
 end
@@ -113,7 +117,7 @@ local function sendMessage(msg)
     end)
 end
 
--- === FIXED RAYCAST & AVATAR INSPECTOR ===
+-- === AVATAR INSPECTOR ===
 local function inspectPlayerAvatar(targetPlayer)
     if not targetPlayer or not targetPlayer.Character then return "Unknown appearance" end
     local char = targetPlayer.Character
@@ -140,7 +144,6 @@ local function inspectPlayerAvatar(targetPlayer)
     if shirt then table.insert(info, "Shirt: " .. shirt.Name) end
     if pants then table.insert(info, "Pants: " .. pants.Name) end
 
-    -- Fixed Raycast implementation using FilterDescendantsInstances
     local camera = Workspace.CurrentCamera
     local myChar = LocalPlayer.Character
     if camera and char:FindFirstChild("Head") and myChar and myChar:FindFirstChild("Head") then
@@ -176,7 +179,6 @@ local function calculateBaritonePath(targetPos)
     if checkRay(currentPos, targetPos) then
         return targetPos
     end
-    -- Fallback simple waypoint adjustment if direct line is blocked
     return targetPos
 end
 
