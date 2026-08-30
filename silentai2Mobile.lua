@@ -192,7 +192,7 @@ local function visualizePath(nodes)
     end
 end
 
--- === DOOR & COLLISION NAVIGATION ENGINE (UPDATED) ===
+-- === DOOR & COLLISION NAVIGATION ENGINE (REFINED) ===
 local GRID_SIZE = 3.5
 
 local function getDoorsList(ignoreChar)
@@ -204,16 +204,12 @@ local function getDoorsList(ignoreChar)
         if mapFolder then
             local mapDoors = mapFolder:FindFirstChild("Doors")
             if mapDoors then
-                for _, obj in ipairs(mapDoors:GetDescendants()) do
-                    table.insert(excludeList, obj)
-                end
+                table.insert(excludeList, mapDoors)
             end
         end
         local sysDoors = systemFolder:FindFirstChild("Doors")
         if sysDoors then
-            for _, obj in ipairs(sysDoors:GetDescendants()) do
-                table.insert(excludeList, obj)
-            end
+            table.insert(excludeList, sysDoors)
         end
     end
     
@@ -228,7 +224,7 @@ local function checkRay(startPos, targetPos, ignoreChar)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
 
-    for i = 1, 6 do
+    for i = 1, 8 do
         params.FilterDescendantsInstances = excludeList
         local res = workspace:Raycast(origin, direction, params)
         if not res then
@@ -237,13 +233,13 @@ local function checkRay(startPos, targetPos, ignoreChar)
 
         local hitPart = res.Instance
         local isCollidable = hitPart.CanCollide
-        local isFloor = res.Normal.Y > 0.6 -- Upward-facing surfaces are treated as floors/ground
+        local isFloor = res.Normal.Y > 0.5 -- Strict floor/walkable surface check
 
-        -- Avoid anything with collision that isn't the floor (and ignore doors automatically via excludeList)
+        -- If it collides and is NOT a floor/ground, it's an obstacle/wall
         if isCollidable and not isFloor then
             return res
         else
-            -- Ignore non-colliding clutter or floors and keep raycasting through them
+            -- Ignore non-colliding parts, decorations, or floors and continue raycasting past them
             table.insert(excludeList, hitPart)
             local distInto = (res.Position - origin).Magnitude
             if distInto >= direction.Magnitude - 0.1 then
@@ -265,7 +261,7 @@ local function getGroundPos(pos, ignoreChar)
         params.FilterDescendantsInstances = excludeList
         local res = workspace:Raycast(origin, Vector3.new(0, -20, 0), params)
         if res then
-            if res.Instance.CanCollide then
+            if res.Instance.CanCollide and res.Normal.Y > 0.5 then
                 return res.Position
             else
                 table.insert(excludeList, res.Instance)
@@ -282,6 +278,7 @@ local function calculateBaritonePath(startPos, targetPos)
     local myChar = LocalPlayer.Character
     if not myChar then return {targetPos} end
 
+    -- Direct path check if completely unobstructed
     if not checkRay(startPos + Vector3.new(0, 2, 0), targetPos + Vector3.new(0, 2, 0), myChar) then
         return {startPos, targetPos}
     end
@@ -308,8 +305,11 @@ local function calculateBaritonePath(startPos, targetPos)
         Vector3.new(-GRID_SIZE, 0, GRID_SIZE), Vector3.new(GRID_SIZE, 0, -GRID_SIZE)
     }
 
+    local closestNode = startNode
+    local minTargetDist = (startNode - targetPos).Magnitude
+
     local iterations = 0
-    while #openSet > 0 and iterations < 180 do
+    while #openSet > 0 and iterations < 250 do
         iterations = iterations + 1
         
         local currentIndex = 1
@@ -321,16 +321,15 @@ local function calculateBaritonePath(startPos, targetPos)
             end
         end
 
-        if (current - targetPos).Magnitude <= GRID_SIZE * 1.5 then
-            local path = {targetPos}
-            local currKey = nodeKey(current)
-            while cameFrom[currKey] do
-                table.insert(path, 1, current)
-                current = cameFrom[currKey]
-                currKey = nodeKey(current)
-            end
-            table.insert(path, 1, startPos)
-            return path
+        local distToTarget = (current - targetPos).Magnitude
+        if distToTarget < minTargetDist then
+            minTargetDist = distToTarget
+            closestNode = current
+        end
+
+        if distToTarget <= GRID_SIZE * 1.5 then
+            closestNode = current
+            break
         end
 
         table.remove(openSet, currentIndex)
@@ -339,7 +338,7 @@ local function calculateBaritonePath(startPos, targetPos)
             local neighborPos = current + dir
             local ground = getGroundPos(neighborPos, myChar)
 
-            if ground and math.abs(ground.Y - current.Y) < 6 then
+            if ground and math.abs(ground.Y - current.Y) < 8 then
                 neighborPos = Vector3.new(neighborPos.X, ground.Y + 2.5, neighborPos.Z)
 
                 local obsCheck = checkRay(current + Vector3.new(0, 1.5, 0), neighborPos + Vector3.new(0, 1.5, 0), myChar)
@@ -365,7 +364,20 @@ local function calculateBaritonePath(startPos, targetPos)
         end
     end
 
-    return {startPos, targetPos}
+    -- Reconstruct path safely without forcing straight-line wall crashes on failure
+    local path = {closestNode}
+    local currKey = nodeKey(closestNode)
+    while cameFrom[currKey] do
+        table.insert(path, 1, cameFrom[currKey])
+        currKey = nodeKey(cameFrom[currKey])
+    end
+    if (path[1] - startPos).Magnitude > 0.5 then
+        table.insert(path, 1, startPos)
+    end
+    if (path[#path] - targetPos).Magnitude > 0.5 then
+        table.insert(path, targetPos)
+    end
+    return path
 end
 
 -- === NATIVE GUI ENGINE ===
