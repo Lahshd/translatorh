@@ -67,7 +67,6 @@ local isProcessing = false
 local followingPlayer = nil
 local activePathTask = nil
 local activeSteerConnection = nil
-local currentAnimationTrack = nil
 
 local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 12 words. Do not output thinking, reasoning, or meta remarks."
 local currentModeIndex = 1
@@ -77,7 +76,7 @@ local Modes = {
     { Name = "Yandere Mode", Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats." .. STRICT_RULE }
 }
 
--- === CHAT & ANIMATION ENGINE ===
+-- === CHAT ENGINE ===
 local function sendMessage(msg)
     if not msg or msg == "" then return end
     pcall(function()
@@ -91,28 +90,31 @@ local function sendMessage(msg)
     end)
 end
 
--- === SPATIAL AWARENESS & DOORS ===
-local function getDoorsList(ignoreChar)
-    local excludeList = {ignoreChar}
-    local systemFolder = workspace:FindFirstChild("System")
-    if systemFolder then
-        local mapFolder = systemFolder:FindFirstChild("Map")
-        if mapFolder and mapFolder:FindFirstChild("Doors") then
-            table.insert(excludeList, mapFolder.Doors)
-        end
-        if systemFolder:FindFirstChild("Doors") then
-            table.insert(excludeList, systemFolder.Doors)
-        end
-    end
-    return excludeList
+-- === SPATIAL AWARENESS & STRICT WALL FILTERS ===
+local function getWallFolder()
+    return workspace:FindFirstChild("System") 
+        and workspace.System:FindFirstChild("Map") 
+        and workspace.System.Map:FindFirstChild("Walls")
 end
 
--- Volumetric node clearance check (Better than single raycasts)
-local function isNodeClear(pos, ignoreList)
+local function getWallParams()
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    local wallsFolder = getWallFolder()
+    params.FilterDescendantsInstances = wallsFolder and {wallsFolder} or {}
+    return params
+end
+
+local function getWallOverlapParams()
     local params = OverlapParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = ignoreList
-    
+    params.FilterType = Enum.RaycastFilterType.Include
+    local wallsFolder = getWallFolder()
+    params.FilterDescendantsInstances = wallsFolder and {wallsFolder} or {}
+    return params
+end
+
+local function isNodeClear(pos)
+    local params = getWallOverlapParams()
     local parts = workspace:GetPartBoundsInRadius(pos + Vector3.new(0, 3, 0), 2.2, params)
     for _, part in ipairs(parts) do
         if part.CanCollide then return false end
@@ -121,10 +123,9 @@ local function isNodeClear(pos, ignoreList)
 end
 
 local function getGroundPos(pos, ignoreChar)
-    local excludeList = getDoorsList(ignoreChar)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = excludeList
+    params.FilterDescendantsInstances = {ignoreChar}
 
     local origin = pos + Vector3.new(0, 5, 0)
     local res = workspace:Raycast(origin, Vector3.new(0, -25, 0), params)
@@ -134,14 +135,61 @@ local function getGroundPos(pos, ignoreChar)
     return nil
 end
 
--- === DYNAMIC 360 WHISKER STEERING ===
-local function getAvoidanceVector(hrpPos, ignoreList)
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = ignoreList
+-- === OBJECT FINDER (CHAIRS & COUCHES) ===
+local function getBasePosAndHeight(obj)
+    if obj:IsA("BasePart") then
+        return obj.Position, obj.Size.Y
+    elseif obj:IsA("Model") then
+        local cf, size = obj:GetBoundingBox()
+        return cf.Position, size.Y
+    end
+    return nil, nil
+end
 
+local function findClosestObject(query, refPos)
+    local closestObj = nil
+    local closestDist = math.huge
+    local isPassthrough = false
+    local targetPos = nil
+    local targetHeight = 0
+
+    local sys = workspace:FindFirstChild("System")
+    local map = sys and sys:FindFirstChild("Map")
+    if not map then return nil, nil, 0, false end
+
+    local folders = {
+        {folder = map:FindFirstChild("Objects"), pass = false},
+        {folder = map:FindFirstChild("Passthrough"), pass = true}
+    }
+
+    for _, data in ipairs(folders) do
+        if data.folder then
+            for _, obj in ipairs(data.folder:GetChildren()) do
+                if obj.Name:lower():find(query) then
+                    local pos, height = getBasePosAndHeight(obj)
+                    if pos then
+                        local dist = (pos - refPos).Magnitude
+                        if dist < closestDist then
+                            closestDist = dist
+                            closestObj = obj
+                            isPassthrough = data.pass
+                            targetPos = pos
+                            targetHeight = height
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return closestObj, targetPos, targetHeight, isPassthrough
+end
+
+-- === DYNAMIC 360 WHISKER STEERING ===
+local function getAvoidanceVector(hrpPos)
+    local params = getWallParams()
     local pushVector = Vector3.zero
-    local numRays = 36 -- 10-degree intervals
+    local numRays = 36 
     local scanRadius = 4.5
 
     for i = 1, numRays do
@@ -149,10 +197,10 @@ local function getAvoidanceVector(hrpPos, ignoreList)
         local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
         local res = workspace:Raycast(hrpPos, dir * scanRadius, params)
         
-        if res and res.Instance.CanCollide and res.Normal.Y < 0.5 then
+        if res and res.Instance.CanCollide then
             local dist = (res.Position - hrpPos).Magnitude
             local strength = (scanRadius - dist) / scanRadius
-            pushVector = pushVector + (res.Normal * strength * 4.0) -- Repulsion force
+            pushVector = pushVector + (res.Normal * strength * 4.0)
         end
     end
     return pushVector
@@ -162,7 +210,6 @@ end
 local function calculateCustomPath(startPos, targetPos)
     local myChar = LocalPlayer.Character
     if not myChar then return {targetPos} end
-    local ignoreList = getDoorsList(myChar)
 
     local openSet = {}
     local cameFrom = {}
@@ -170,7 +217,6 @@ local function calculateCustomPath(startPos, targetPos)
     local fScore = {}
 
     local startNode = Vector3.new(math.floor(startPos.X / GRID_SIZE + 0.5) * GRID_SIZE, startPos.Y, math.floor(startPos.Z / GRID_SIZE + 0.5) * GRID_SIZE)
-    
     local function nodeKey(v) return math.floor(v.X) .. "," .. math.floor(v.Y) .. "," .. math.floor(v.Z) end
 
     table.insert(openSet, startNode)
@@ -220,7 +266,7 @@ local function calculateCustomPath(startPos, targetPos)
             if ground and math.abs(ground.Y - current.Y) < 6 then
                 neighborPos = Vector3.new(neighborPos.X, ground.Y, neighborPos.Z)
 
-                if isNodeClear(neighborPos, ignoreList) then
+                if isNodeClear(neighborPos) then
                     local tentativeG = (gScore[nodeKey(current)] or math.huge) + (neighborPos - current).Magnitude
                     local nKey = nodeKey(neighborPos)
 
@@ -250,7 +296,7 @@ local function calculateCustomPath(startPos, targetPos)
     return path
 end
 
--- === MOVEMENT ENGINE ===
+-- === DYNAMIC MOVEMENT & RECALCULATION ENGINE ===
 local function stopMovement()
     followingPlayer = nil
     if activePathTask or env.SilentBotActiveTask then 
@@ -284,14 +330,11 @@ local function executePath(targetPos, isFollowing)
         if not humanoid or not myHRP then return end
 
         humanoid.WalkSpeed = RUN_SPEED
-        local ignoreList = getDoorsList(myChar)
-
         local currentWaypoint = nil
         
-        -- Start dynamic steering
         activeSteerConnection = RunService.Heartbeat:Connect(function()
             if not currentWaypoint or not myHRP or not humanoid then return end
-            local avoidanceVec = getAvoidanceVector(myHRP.Position, ignoreList)
+            local avoidanceVec = getAvoidanceVector(myHRP.Position)
             humanoid:MoveTo(currentWaypoint + avoidanceVec)
         end)
 
@@ -301,24 +344,40 @@ local function executePath(targetPos, isFollowing)
             
             if not actualTarget then break end
             
+            if not isFollowing and (myHRP.Position - actualTarget).Magnitude < 4.5 then
+                break
+            end
+            
             local nodes = calculateCustomPath(myHRP.Position, actualTarget)
+            local pathFailed = false
             
             for i = 2, #nodes do
                 currentWaypoint = nodes[i]
-                local startTime = tick()
+                local lastPos = myHRP.Position
+                local stuckTimer = 0
                 
                 while isScriptAlive and (myHRP.Position - Vector3.new(currentWaypoint.X, myHRP.Position.Y, currentWaypoint.Z)).Magnitude > 3.5 do
                     task.wait(0.05)
-                    if tick() - startTime > 1.8 then break end -- Recalculate if stuck
+                    stuckTimer = stuckTimer + 0.05
+                    
+                    if stuckTimer >= 0.5 then
+                        if (myHRP.Position - lastPos).Magnitude < 0.5 then
+                            pathFailed = true
+                            humanoid.Jump = true 
+                            break
+                        end
+                        lastPos = myHRP.Position
+                        stuckTimer = 0
+                    end
                     
                     if currentWaypoint.Y > myHRP.Position.Y + 2.0 then
                         humanoid.Jump = true
                     end
                 end
+                
+                if pathFailed then break end
             end
-            
-            if not isFollowing then break end
-            task.wait(0.2)
+            task.wait(0.1)
         end
         
         if activeSteerConnection then activeSteerConnection:Disconnect() end
@@ -330,15 +389,59 @@ end
 -- === COMMAND DISPATCH & AI ===
 local function processSingleAction(player, actionStr)
     local cmd = actionStr:lower():gsub("^%s*(.-)%s*$", "%1")
-    if cmd:find("stop") then stopMovement()
+    
+    if cmd:find("stop") then 
+        stopMovement()
     elseif cmd:find("follow") then
         followingPlayer = player
         executePath(nil, true)
-    elseif cmd:find("come") or cmd:find("goto") then
-        local targetPlayer = player
-        for _, p in ipairs(Players:GetPlayers()) do
-            if cmd:find(p.Name:lower()) or cmd:find(p.DisplayName:lower()) then targetPlayer = p break end
+    elseif cmd:find("come") or cmd:find("goto") or cmd:find("go to") then
+        
+        -- Regex Pattern Matcher for Objects
+        local objQuery, relative = cmd:match("go%s*to%s+(.-)%s+closest%s+to%s+(me)")
+        if not objQuery then objQuery, relative = cmd:match("go%s*to%s+(.-)%s+closest%s+to%s+(you)") end
+        if not objQuery then objQuery, relative = cmd:match("goto%s+(.-)%s+closest%s+to%s+(me)") end
+        if not objQuery then objQuery, relative = cmd:match("goto%s+(.-)%s+closest%s+to%s+(you)") end
+
+        if objQuery and relative then
+            objQuery = objQuery:gsub("^the%s+", ""):gsub("%s+$", "")
+            
+            local myChar = LocalPlayer.Character
+            local senderChar = player.Character
+            local refPos = nil
+
+            if relative == "me" and senderChar and senderChar:FindFirstChild("HumanoidRootPart") then
+                refPos = senderChar.HumanoidRootPart.Position
+            elseif relative == "you" and myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                refPos = myChar.HumanoidRootPart.Position
+            end
+
+            if refPos then
+                local _, tPos, tHeight, isPass = findClosestObject(objQuery, refPos)
+                if tPos then
+                    if isPass then
+                        -- Push final waypoint upward so the bot jumps ON the couch
+                        tPos = tPos + Vector3.new(0, (tHeight / 2) + 1.5, 0)
+                    end
+                    executePath(tPos, false)
+                    return -- Exit out so it doesn't search for a player
+                end
+            end
         end
+        
+        -- Fallback: Player Targeting if no object matched
+        local targetPlayer = player
+        local targetName = cmd:match("goto%s+([%w_]+)") or cmd:match("go to%s+([%w_]+)")
+        
+        if targetName then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Name:lower():find(targetName) or p.DisplayName:lower():find(targetName) then 
+                    targetPlayer = p 
+                    break 
+                end
+            end
+        end
+        
         if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             executePath(targetPlayer.Character.HumanoidRootPart.Position, false)
         end
