@@ -192,24 +192,88 @@ local function visualizePath(nodes)
     end
 end
 
--- === BARITONE-STYLE A* & RAYCAST NAVIGATION ENGINE (FIXED) ===
+-- === DOOR & COLLISION NAVIGATION ENGINE (UPDATED) ===
 local GRID_SIZE = 3.5
 
+local function getDoorsList(ignoreChar)
+    local excludeList = {ignoreChar}
+    
+    local systemFolder = workspace:FindFirstChild("System")
+    if systemFolder then
+        local mapFolder = systemFolder:FindFirstChild("Map")
+        if mapFolder then
+            local mapDoors = mapFolder:FindFirstChild("Doors")
+            if mapDoors then
+                for _, obj in ipairs(mapDoors:GetDescendants()) do
+                    table.insert(excludeList, obj)
+                end
+            end
+        end
+        local sysDoors = systemFolder:FindFirstChild("Doors")
+        if sysDoors then
+            for _, obj in ipairs(sysDoors:GetDescendants()) do
+                table.insert(excludeList, obj)
+            end
+        end
+    end
+    
+    return excludeList
+end
+
 local function checkRay(startPos, targetPos, ignoreChar)
+    local origin = startPos
+    local direction = targetPos - startPos
+    local excludeList = getDoorsList(ignoreChar)
+    
     local params = RaycastParams.new()
-    params.FilterDescendantsInstances = {ignoreChar} -- FIXED FROM FilterAncestorsOfTypes
     params.FilterType = Enum.RaycastFilterType.Exclude
-    local res = workspace:Raycast(startPos, targetPos - startPos, params)
-    return res
+
+    for i = 1, 6 do
+        params.FilterDescendantsInstances = excludeList
+        local res = workspace:Raycast(origin, direction, params)
+        if not res then
+            return nil -- Clear path!
+        end
+
+        local hitPart = res.Instance
+        local isCollidable = hitPart.CanCollide
+        local isFloor = res.Normal.Y > 0.6 -- Upward-facing surfaces are treated as floors/ground
+
+        -- Avoid anything with collision that isn't the floor (and ignore doors automatically via excludeList)
+        if isCollidable and not isFloor then
+            return res
+        else
+            -- Ignore non-colliding clutter or floors and keep raycasting through them
+            table.insert(excludeList, hitPart)
+            local distInto = (res.Position - origin).Magnitude
+            if distInto >= direction.Magnitude - 0.1 then
+                return nil
+            end
+            origin = res.Position + (direction.Unit * 0.1)
+        end
+    end
+    return nil
 end
 
 local function getGroundPos(pos, ignoreChar)
+    local excludeList = getDoorsList(ignoreChar)
     local params = RaycastParams.new()
-    params.FilterDescendantsInstances = {ignoreChar} -- FIXED FROM FilterAncestorsOfTypes
     params.FilterType = Enum.RaycastFilterType.Exclude
-    local res = workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -15, 0), params)
-    if res then
-        return res.Position
+
+    local origin = pos + Vector3.new(0, 4, 0)
+    for i = 1, 5 do
+        params.FilterDescendantsInstances = excludeList
+        local res = workspace:Raycast(origin, Vector3.new(0, -20, 0), params)
+        if res then
+            if res.Instance.CanCollide then
+                return res.Position
+            else
+                table.insert(excludeList, res.Instance)
+                origin = res.Position - Vector3.new(0, 0.1, 0)
+            end
+        else
+            break
+        end
     end
     return nil
 end
