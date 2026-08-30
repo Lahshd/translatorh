@@ -14,20 +14,14 @@ end
 
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
--- Target CoreGui or gethui() if available for executor compatibility
 local uiParent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
 
--- Destroy previous instances
 pcall(function()
     for _, child in ipairs(uiParent:GetChildren()) do
-        if child.Name == "SilentAIBotNative" then
-            child:Destroy()
-        end
+        if child.Name == "SilentAIBotNative" then child:Destroy() end
     end
     for _, child in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
-        if child.Name == "SilentAIBotNative" then
-            child:Destroy()
-        end
+        if child.Name == "SilentAIBotNative" then child:Destroy() end
     end
 end)
 
@@ -285,6 +279,27 @@ local function getDoorFilterList()
     return filterList
 end
 
+-- === TIMEOUT MOVETO HELPER ===
+local function moveAndWaitWithTimeout(humanoid, targetPosition, timeoutSeconds)
+    timeoutSeconds = timeoutSeconds or 5
+    humanoid:MoveTo(targetPosition)
+    
+    local finished = false
+    local conn
+    conn = humanoid.MoveToFinished:Connect(function()
+        finished = true
+        if conn then conn:Disconnect() end
+    end)
+    
+    local startTime = tick()
+    while not finished and (tick() - startTime < timeoutSeconds) do
+        task.wait(0.1)
+    end
+    
+    if conn then conn:Disconnect() end
+    return finished
+end
+
 -- === MOVEMENT ENGINE ===
 local function stopMovement()
     followingPlayer = nil
@@ -332,8 +347,7 @@ local function navigateToPosition(targetPos, targetTool)
 
         local obstacle = raycastCheckObstacle(myHRP.Position, targetPos)
         if not obstacle then
-            humanoid:MoveTo(targetPos)
-            humanoid.MoveToFinished:Wait()
+            moveAndWaitWithTimeout(humanoid, targetPos, 6)
         else
             local path = PathfindingService:CreatePath({
                 AgentRadius = 2,
@@ -350,12 +364,14 @@ local function navigateToPosition(targetPos, targetTool)
 
                 for _, waypoint in ipairs(waypoints) do
                     if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
-                    humanoid:MoveTo(waypoint.Position)
-                    humanoid.MoveToFinished:Wait()
+                    local reached = moveAndWaitWithTimeout(humanoid, waypoint.Position, 4)
+                    if not reached then
+                        -- Stuck on path step, break to clear and recompute
+                        break
+                    end
                 end
             else
-                humanoid:MoveTo(targetPos)
-                humanoid.MoveToFinished:Wait()
+                moveAndWaitWithTimeout(humanoid, targetPos, 5)
             end
         end
 
@@ -400,8 +416,8 @@ local function startFollowingPlayer(targetPlayer)
                         for i = 1, math.min(#waypoints, 4) do
                             local wp = waypoints[i]
                             if wp.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
-                            humanoid:MoveTo(wp.Position)
-                            humanoid.MoveToFinished:Wait()
+                            local reached = moveAndWaitWithTimeout(humanoid, wp.Position, 3)
+                            if not reached then break end
                         end
                     else
                         humanoid:MoveTo(targetHRP.Position)
@@ -611,13 +627,14 @@ local function processIncomingMessage(player, messageText)
     if not botEnabled or player == LocalPlayer then return end
     local lowerMsg = messageText:lower()
 
-    if lowerMsg:find("tsundere") then
+    -- Fuzzy mode switches to support misspellings like 'tsudere'
+    if lowerMsg:find("tsun") or lowerMsg:find("tsud") then
         currentModeIndex = 2
         ModeBtn.Text = "Mode: Tsundere Mode"
-    elseif lowerMsg:find("owo") then
+    elseif lowerMsg:find("owo") or lowerMsg:find("uwu") then
         currentModeIndex = 1
         ModeBtn.Text = "Mode: OwO Mode"
-    elseif lowerMsg:find("yandere") then
+    elseif lowerMsg:find("yan") or lowerMsg:find("yand") then
         currentModeIndex = 3
         ModeBtn.Text = "Mode: Yandere Mode"
     end
