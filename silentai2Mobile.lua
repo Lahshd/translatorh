@@ -14,14 +14,46 @@ end
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 local uiParent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
 
-pcall(function()
-    for _, child in ipairs(uiParent:GetChildren()) do
-        if child.Name == "SilentAIBotNative" then child:Destroy() end
+-- === GLOBAL TEARDOWN SYSTEM ===
+-- Cleans up previous connections, visual objects, GUIs, and tasks before running
+if _G.SilentBotTeardown then
+    pcall(function() _G.SilentBotTeardown() end)
+end
+
+local scriptConnections = {}
+
+local function fullTeardown()
+    -- Cancel active path task
+    if _G.SilentBotActiveTask then
+        pcall(function() task.cancel(_G.SilentBotActiveTask) end)
+        _G.SilentBotActiveTask = nil
     end
-    for _, child in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
-        if child.Name == "SilentAIBotNative" then child:Destroy() end
+
+    -- Disconnect event listeners
+    for _, conn in ipairs(scriptConnections) do
+        if conn and conn.Connected then
+            pcall(function() conn:Disconnect() end)
+        end
     end
-end)
+    scriptConnections = {}
+
+    -- Destroy path visual folder
+    local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
+    if oldFolder then oldFolder:Destroy() end
+
+    -- Destroy active GUIs
+    pcall(function()
+        for _, child in ipairs(uiParent:GetChildren()) do
+            if child.Name == "SilentAIBotNative" then child:Destroy() end
+        end
+        for _, child in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+            if child.Name == "SilentAIBotNative" then child:Destroy() end
+        end
+    end)
+end
+
+_G.SilentBotTeardown = fullTeardown
+fullTeardown() -- Run teardown on execution
 
 -- Configurations & Variables
 local OPENROUTER_API_KEY = "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"
@@ -32,7 +64,6 @@ local RUN_SPEED = 24
 local botEnabled = true
 local isProcessingGlobal = false
 local lastChatTimestamp = 0
-local activePathTask = nil
 local navigationVersion = 0
 
 local STRICT_RULE = " Respond ONLY with plain spoken dialogue. NO markdown, NO special symbols, NO quotes. Max 8 words."
@@ -69,7 +100,7 @@ ToggleBtn.TextSize = 24
 ToggleBtn.Parent = ScreenGui
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 240, 0, 200)
+MainFrame.Size = UDim2.new(0, 240, 0, 240)
 MainFrame.Position = UDim2.new(0, 75, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
 MainFrame.Active = true
@@ -78,7 +109,7 @@ MainFrame.Parent = ScreenGui
 
 local BotToggleBtn = Instance.new("TextButton")
 BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
+BotToggleBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
 BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
 BotToggleBtn.Text = "BOT: ON"
 BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -86,24 +117,35 @@ BotToggleBtn.Parent = MainFrame
 
 local ModeBtn = Instance.new("TextButton")
 ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
+ModeBtn.Position = UDim2.new(0.05, 0, 0.42, 0)
 ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
 ModeBtn.Text = "Mode: OwO Mode"
 ModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ModeBtn.Parent = MainFrame
 
-ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
-BotToggleBtn.MouseButton1Click:Connect(function()
+local UnloadBtn = Instance.new("TextButton")
+UnloadBtn.Size = UDim2.new(0.9, 0, 0, 30)
+UnloadBtn.Position = UDim2.new(0.05, 0, 0.75, 0)
+UnloadBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+UnloadBtn.Text = "UNLOAD SCRIPT"
+UnloadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UnloadBtn.Parent = MainFrame
+
+table.insert(scriptConnections, ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end))
+table.insert(scriptConnections, BotToggleBtn.MouseButton1Click:Connect(function()
     botEnabled = not botEnabled
     BotToggleBtn.Text = botEnabled and "BOT: ON" or "BOT: OFF"
     BotToggleBtn.BackgroundColor3 = botEnabled and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(160, 50, 50)
-end)
-ModeBtn.MouseButton1Click:Connect(function()
+end))
+table.insert(scriptConnections, ModeBtn.MouseButton1Click:Connect(function()
     currentModeIndex = (currentModeIndex % #Modes) + 1
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
-end)
+end))
+table.insert(scriptConnections, UnloadBtn.MouseButton1Click:Connect(function()
+    fullTeardown()
+end))
 
--- === VISUAL PATH SYSTEM ===
+-- === VISUAL PATH SYSTEM (PERSISTENT UNTIL DESTINATION) ===
 local function clearPathVisuals()
     local oldFolder = workspace:FindFirstChild("SilentPathVisuals")
     if oldFolder then oldFolder:Destroy() end
@@ -162,12 +204,12 @@ local function sendMessage(msg)
     end)
 end
 
--- === NAVIGATION ENGINE WITH UNTIL-REACHED LOOP ===
+-- === MOVEMENT & PERSISTENT PATH ENGINE ===
 local function stopMovement()
     navigationVersion = navigationVersion + 1
-    if activePathTask then
-        task.cancel(activePathTask)
-        activePathTask = nil
+    if _G.SilentBotActiveTask then
+        pcall(function() task.cancel(_G.SilentBotActiveTask) end)
+        _G.SilentBotActiveTask = nil
     end
     clearPathVisuals()
     local myChar = LocalPlayer.Character
@@ -181,7 +223,7 @@ local function navigateToTargetPlayer(targetPlayer)
     navigationVersion = navigationVersion + 1
     local currentVersion = navigationVersion
 
-    activePathTask = task.spawn(function()
+    _G.SilentBotActiveTask = task.spawn(function()
         local myChar = LocalPlayer.Character
         if not myChar then return end
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
@@ -190,14 +232,14 @@ local function navigateToTargetPlayer(targetPlayer)
 
         humanoid.WalkSpeed = RUN_SPEED
 
-        -- LOOP UNTIL BOT COMES WITHIN 4 STUDS OF TARGET
+        -- CONTINUOUS PATHING UNTIL WITHIN 4 STUDS OF TARGET
         while navigationVersion == currentVersion do
             if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
             local targetHRP = targetPlayer.Character.HumanoidRootPart
             local distance = (myHRP.Position - targetHRP.Position).Magnitude
 
             if distance <= 4 then
-                break -- REACHED TARGET DESTINATION
+                break -- TARGET REACHED
             end
 
             local path = PathfindingService:CreatePath({ AgentRadius = 1.0, AgentHeight = 4.5, AgentCanJump = true })
@@ -205,7 +247,7 @@ local function navigateToTargetPlayer(targetPlayer)
 
             if success and path.Status == Enum.PathStatus.Success then
                 local waypoints = path:GetWaypoints()
-                visualizePath(waypoints)
+                visualizePath(waypoints) -- Renders persistent path lines
 
                 for _, waypoint in ipairs(waypoints) do
                     if navigationVersion ~= currentVersion then break end
@@ -220,7 +262,7 @@ local function navigateToTargetPlayer(targetPlayer)
                         if (myHRP.Position - waypoint.Position).Magnitude < 3 then break end
                         
                         task.wait(0.1)
-                        -- Wall recovery: slide around corner if stuck
+                        -- Corner Stuck Recovery: side step & jump
                         if (myHRP.Position - lastPos).Magnitude < 0.1 then
                             humanoid.Jump = true
                             myHRP.CFrame = myHRP.CFrame * CFrame.new(2, 0, -1)
@@ -230,7 +272,7 @@ local function navigateToTargetPlayer(targetPlayer)
                     end
                 end
             else
-                -- Fallback direct movement
+                -- Fallback direct ray path line
                 visualizePath({{Position = myHRP.Position}, {Position = targetHRP.Position}})
                 humanoid:MoveTo(targetHRP.Position)
                 task.wait(0.5)
@@ -238,7 +280,7 @@ local function navigateToTargetPlayer(targetPlayer)
             task.wait(0.1)
         end
 
-        clearPathVisuals()
+        clearPathVisuals() -- ONLY WIPES VISUALS ONCE DESTINATION IS REACHED
         if myHRP then humanoid:MoveTo(myHRP.Position) end
     end)
 end
@@ -282,7 +324,7 @@ local function queryAI(promptText, senderName)
     return nil
 end
 
--- === STRICT SINGLE CHAT HOOK ===
+-- === CHAT EVENT HOOK ===
 local function processIncomingMessage(player, messageText)
     if not botEnabled or player == LocalPlayer then return end
     if isProcessingGlobal or (tick() - lastChatTimestamp < 4) then return end
@@ -310,19 +352,19 @@ local function processIncomingMessage(player, messageText)
     end
 end
 
--- CONNECT TO ONLY ONE ACTIVE CHAT SERVICE
+-- CONNECT TO CHAT SERVICE & TRACK CONNECTIONS
 if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-    TextChatService.MessageReceived:Connect(function(textChatMessage)
+    table.insert(scriptConnections, TextChatService.MessageReceived:Connect(function(textChatMessage)
         if textChatMessage and textChatMessage.TextSource then
             local player = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
             if player then processIncomingMessage(player, textChatMessage.Text) end
         end
-    end)
+    end))
 else
-    Players.PlayerAdded:Connect(function(p)
-        p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
-    end)
+    table.insert(scriptConnections, Players.PlayerAdded:Connect(function(p)
+        table.insert(scriptConnections, p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end))
+    end))
     for _, p in ipairs(Players:GetPlayers()) do
-        p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+        table.insert(scriptConnections, p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end))
     end
 end
