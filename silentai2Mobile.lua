@@ -1,4 +1,4 @@
--- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER ===
+-- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER SCIRIPT v4 ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PathfindingService = game:GetService("PathfindingService")
@@ -20,14 +20,10 @@ local uiParent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("P
 -- Destroy previous instances
 pcall(function()
     for _, child in ipairs(uiParent:GetChildren()) do
-        if child.Name == "SilentAIBotNative" then
-            child:Destroy()
-        end
+        if child.Name == "SilentAIBotNative" then child:Destroy() end
     end
     for _, child in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
-        if child.Name == "SilentAIBotNative" then
-            child:Destroy()
-        end
+        if child.Name == "SilentAIBotNative" then child:Destroy() end
     end
 end)
 
@@ -56,18 +52,9 @@ local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 12
 
 local currentModeIndex = 1
 local Modes = {
-    {
-        Name = "OwO Mode", 
-        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters." .. STRICT_RULE
-    },
-    {
-        Name = "Tsundere Mode", 
-        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass." .. STRICT_RULE
-    },
-    {
-        Name = "Yandere Mode", 
-        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats." .. STRICT_RULE
-    }
+    { Name = "OwO Mode", Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters." .. STRICT_RULE },
+    { Name = "Tsundere Mode", Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass." .. STRICT_RULE },
+    { Name = "Yandere Mode", Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats." .. STRICT_RULE }
 }
 
 local Emotes = {
@@ -76,7 +63,7 @@ local Emotes = {
     ["captain dance"] = "rbxassetid://10214311282"
 }
 
--- === NATIVE GUI BUILDER ===
+-- === NATIVE GUI BUILDER (UPGRADED ROUNDING) ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
@@ -109,7 +96,7 @@ MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.CornerRadius = UDim.new(0, 16) -- More rounded edges
 MainCorner.Parent = MainFrame
 
 local TitleLabel = Instance.new("TextLabel")
@@ -122,6 +109,18 @@ TitleLabel.TextSize = 12
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
 
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 16)
+TitleCorner.Parent = TitleLabel
+
+-- Fix title background bleed
+local BottomCover = Instance.new("Frame")
+BottomCover.Size = UDim2.new(1, 0, 0, 10)
+BottomCover.Position = UDim2.new(0, 0, 1, -10)
+BottomCover.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+BottomCover.BorderSizePixel = 0
+BottomCover.Parent = TitleLabel
+
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
 StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
@@ -133,35 +132,27 @@ StatusLabel.TextSize = 11
 StatusLabel.TextWrapped = true
 StatusLabel.Parent = MainFrame
 
-local BotToggleBtn = Instance.new("TextButton")
-BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
-BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
-BotToggleBtn.Text = "BOT: ON"
-BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-BotToggleBtn.Font = Enum.Font.GothamBold
-BotToggleBtn.TextSize = 12
-BotToggleBtn.Parent = MainFrame
+local function createRoundedButton(name, pos, color, text, parent)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0.9, 0, 0, 30)
+    btn.Position = pos
+    btn.BackgroundColor3 = color
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.Parent = parent
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8) -- Inner buttons nicely rounded
+    corner.Parent = btn
+    return btn
+end
 
-local ModeBtn = Instance.new("TextButton")
-ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
-ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
-ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
-ModeBtn.Text = "Mode: OwO Mode"
-ModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ModeBtn.Font = Enum.Font.GothamBold
-ModeBtn.TextSize = 12
-ModeBtn.Parent = MainFrame
-
-local StopFollowBtn = Instance.new("TextButton")
-StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
-StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
-StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
-StopFollowBtn.Text = "Stop Following"
-StopFollowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-StopFollowBtn.Font = Enum.Font.GothamBold
-StopFollowBtn.TextSize = 12
-StopFollowBtn.Parent = MainFrame
+local BotToggleBtn = createRoundedButton("BotToggle", UDim2.new(0.05, 0, 0.38, 0), Color3.fromRGB(40, 160, 80), "BOT: ON", MainFrame)
+local ModeBtn = createRoundedButton("ModeBtn", UDim2.new(0.05, 0, 0.56, 0), Color3.fromRGB(60, 50, 80), "Mode: OwO Mode", MainFrame)
+local StopFollowBtn = createRoundedButton("StopBtn", UDim2.new(0.05, 0, 0.74, 0), Color3.fromRGB(160, 50, 50), "Stop Following", MainFrame)
 
 ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
 
@@ -205,7 +196,8 @@ local function visualizePath(waypoints)
         if i > 1 then
             local prevWp = waypoints[i - 1]
             local beamPart = Instance.new("Part")
-            beamPart.Size = Vector3.new(0.15, 0.15, (wp.Position - prevWp.Position).Magnitude)
+            local dist = (wp.Position - prevWp.Position).Magnitude
+            beamPart.Size = Vector3.new(0.15, 0.15, dist)
             beamPart.CFrame = CFrame.new(prevWp.Position:Lerp(wp.Position, 0.5), wp.Position)
             beamPart.Color = Color3.fromRGB(0, 200, 255)
             beamPart.Material = Enum.Material.Neon
@@ -270,10 +262,12 @@ local function playEmote(emoteQuery)
 end
 
 -- === DOOR & COLLISION FILTERING ===
-local function getDoorFilterList()
+local function getFilterList()
     local filterList = {}
     local myChar = LocalPlayer.Character
     if myChar then table.insert(filterList, myChar) end
+    if followingPlayer and followingPlayer.Character then table.insert(filterList, followingPlayer.Character) end
+    if pathFolder then table.insert(filterList, pathFolder) end -- Don't see our path lines as walls
 
     local doorsFolder1 = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Doors")
     if doorsFolder1 then table.insert(filterList, doorsFolder1) end
@@ -283,6 +277,68 @@ local function getDoorFilterList()
     if doorsFolder2 then table.insert(filterList, doorsFolder2) end
 
     return filterList
+end
+
+local function raycastCheckObstacle(startPos, endPos)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = getFilterList()
+
+    local direction = (endPos - startPos)
+    local result = workspace:Raycast(startPos, direction, rayParams)
+    -- If we hit something (like workspace.System.Map.Walls), it returns the result as an obstacle
+    return result
+end
+
+-- === MAP OBJECT & COUCH FINDER ===
+local function findClosestMapObject(query, referencePos)
+    local bestObj = nil
+    local bestPos = nil
+    local bestDist = math.huge
+    local isPassthrough = false
+
+    local sys = workspace:FindFirstChild("System")
+    local map = sys and sys:FindFirstChild("Map")
+    if not map then return nil, nil, false end
+
+    local function scanFolder(folder, passFlag)
+        if not folder then return end
+        for _, obj in ipairs(folder:GetDescendants()) do
+            if obj:IsA("BasePart") or obj:IsA("Model") then
+                if obj.Name:lower():find(query) then
+                    local pos
+                    local size = Vector3.zero
+                    
+                    if obj:IsA("Model") then
+                        local cf, sz = obj:GetBoundingBox()
+                        pos = cf.Position
+                        size = sz
+                    else
+                        pos = obj.Position
+                        size = obj.Size
+                    end
+
+                    local dist = (pos - referencePos).Magnitude
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestObj = obj
+                        bestPos = pos
+                        isPassthrough = passFlag
+                        
+                        -- If it's a passthrough like a couch, calculate the top surface to stand ON it
+                        if isPassthrough then
+                            bestPos = bestPos + Vector3.new(0, (size.Y / 2) + 2.5, 0)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    scanFolder(map:FindFirstChild("Objects"), false)
+    scanFolder(map:FindFirstChild("Passthrough"), true)
+
+    return bestObj, bestPos, isPassthrough
 end
 
 -- === MOVEMENT ENGINE ===
@@ -304,18 +360,8 @@ end
 
 StopFollowBtn.MouseButton1Click:Connect(function()
     stopMovement()
-    sendMessage("Stopped following! ♡")
+    sendMessage("Stopped moving! ♡")
 end)
-
-local function raycastCheckObstacle(startPos, endPos)
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = getDoorFilterList()
-
-    local direction = (endPos - startPos)
-    local result = workspace:Raycast(startPos, direction, rayParams)
-    return result
-end
 
 local function navigateToPosition(targetPos, targetTool)
     stopEmote()
@@ -354,12 +400,12 @@ local function navigateToPosition(targetPos, targetTool)
                     humanoid.MoveToFinished:Wait()
                 end
             else
+                -- Fallback if pathfinding fails
                 humanoid:MoveTo(targetPos)
                 humanoid.MoveToFinished:Wait()
             end
         end
 
-        humanoid:MoveTo(targetPos)
         task.wait(0.3)
 
         if targetTool and targetTool:IsA("Tool") then
@@ -437,8 +483,7 @@ local function equipItemByName(itemName)
     end
 
     local isGeneric = lowerName:find("an item") or lowerName:find("a item") or lowerName:find("item") or lowerName:find("anything")
-    local closestObj = nil
-    local closestPos = nil
+    local closestObj, closestPos = nil, nil
     local closestDist = math.huge
     local myHRP = myChar:FindFirstChild("HumanoidRootPart")
 
@@ -489,9 +534,7 @@ local function useEquippedTool()
     local myChar = LocalPlayer.Character
     if not myChar then return end
     local tool = myChar:FindFirstChildOfClass("Tool")
-    if tool then 
-        tool:Activate() 
-    end
+    if tool then tool:Activate() end
 end
 
 -- === COMMAND EXECUTION ===
@@ -516,6 +559,36 @@ local function processSingleAction(player, actionStr)
         playEmote(cmd)
     elseif cmd:find("follow") then
         startFollowingPlayer(player)
+        
+    -- MAP OBJECT / COUCH MATCHING
+    elseif cmd:find("closest to") then
+        local objQuery, relative = cmd:match("go%s*to%s+(.-)%s+closest%s+to%s+(me)")
+        if not objQuery then objQuery, relative = cmd:match("go%s*to%s+(.-)%s+closest%s+to%s+(you)") end
+        if not objQuery then objQuery, relative = cmd:match("goto%s+(.-)%s+closest%s+to%s+(me)") end
+        if not objQuery then objQuery, relative = cmd:match("goto%s+(.-)%s+closest%s+to%s+(you)") end
+        if not objQuery then objQuery, relative = cmd:match("head%s*to%s+(.-)%s+closest%s+to%s+(me)") end
+        if not objQuery then objQuery, relative = cmd:match("head%s*to%s+(.-)%s+closest%s+to%s+(you)") end
+
+        if objQuery and relative then
+            objQuery = objQuery:gsub("^the%s+", ""):gsub("^a%s+", ""):gsub("^an%s+", ""):gsub("%s+$", "")
+            local refPos = nil
+
+            if relative == "me" and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                refPos = player.Character.HumanoidRootPart.Position
+            elseif relative == "you" and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                refPos = LocalPlayer.Character.HumanoidRootPart.Position
+            end
+
+            if refPos then
+                local _, targetPos, _ = findClosestMapObject(objQuery, refPos)
+                if targetPos then
+                    navigateToPosition(targetPos, nil)
+                    return
+                end
+            end
+        end
+
+    -- PLAYER TARGETING (Fallback)
     elseif cmd:find("come") or cmd:find("goto") or cmd:find("go to") or cmd:find("head to") then
         local targetPlayer = player
         if cmd:find("me") or cmd:find("myself") then
@@ -535,6 +608,7 @@ local function processSingleAction(player, actionStr)
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             navigateToPosition(targetPlayer.Character.HumanoidRootPart.Position, nil)
         end
+        
     elseif cmd:find("equip") or cmd:find("take out") or cmd:find("find") or cmd:find("get") then
         local targetItem = cmd:match("equip%s+(.+)") or cmd:match("take out%s+(.+)") or cmd:match("find%s+(.+)") or cmd:match("get%s+(.+)")
         if targetItem then
