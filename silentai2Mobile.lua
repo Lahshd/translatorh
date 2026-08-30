@@ -14,6 +14,7 @@ end
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
+-- Clean old instances
 pcall(function()
     for _, child in ipairs(PlayerGui:GetChildren()) do
         if child.Name == "SilentAIBotNative" then
@@ -22,7 +23,7 @@ pcall(function()
     end
 end)
 
--- Configuration & Constants
+-- Configurations & Variables
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -67,7 +68,7 @@ local Emotes = {
     ["captain dance"] = "rbxassetid://10214311282"
 }
 
--- === NATIVE GUI ENGINE ===
+-- === NATIVE GUI BUILDER ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
@@ -273,7 +274,7 @@ local function getDoorFilterList()
     return filterList
 end
 
--- === MOVEMENT ENGINE (RAYCASTING + PATHFINDING) ===
+-- === MOVEMENT ENGINE ===
 local function stopMovement()
     followingPlayer = nil
     if activePathTask then task.cancel(activePathTask) activePathTask = nil end
@@ -405,7 +406,7 @@ local function startFollowingPlayer(targetPlayer)
     end)
 end
 
--- === INVENTORY & SPAWNER SCANNER ===
+-- === INVENTORY & ITEM SEARCH ===
 local function equipItemByName(itemName)
     local myChar = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
@@ -482,7 +483,7 @@ local function useEquippedTool()
     end
 end
 
--- === SINGLE ACTION DISPATCHER ===
+-- === COMMAND EXECUTION ===
 local function processSingleAction(player, actionStr)
     local cmd = actionStr:lower():gsub("^%s*(.-)%s*$", "%1")
 
@@ -533,7 +534,6 @@ local function processSingleAction(player, actionStr)
     end
 end
 
--- === MULTI-COMMAND CHAINING ===
 local function executeSubCommands(player, fullMessage)
     task.spawn(function()
         local cleanedMsg = fullMessage:gsub("and then", "then")
@@ -553,7 +553,7 @@ local function executeSubCommands(player, fullMessage)
     end)
 end
 
--- === SILENT AI QUERY ENGINE ===
+-- === AI INTEGRATION ===
 local function queryAI(promptText, senderName)
     if not request then return end
     local fullPrompt = senderName .. ": " .. promptText
@@ -596,7 +596,6 @@ local function queryAI(promptText, senderName)
     return nil
 end
 
--- === INCOMING MESSAGE PROCESSOR ===
 local function processIncomingMessage(player, messageText)
     if not botEnabled or player == LocalPlayer then return end
     local lowerMsg = messageText:lower()
