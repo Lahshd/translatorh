@@ -166,7 +166,6 @@ local function visualizePath(nodes)
     pathFolder.Parent = workspace
 
     for i, pos in ipairs(nodes) do
-        -- Waypoint Node Marker
         local nodePart = Instance.new("Part")
         nodePart.Size = Vector3.new(0.6, 0.6, 0.6)
         nodePart.Position = pos + Vector3.new(0, 0.2, 0)
@@ -176,7 +175,6 @@ local function visualizePath(nodes)
         nodePart.CanCollide = false
         nodePart.Parent = pathFolder
 
-        -- Connected Path Line
         if i > 1 then
             local prevPos = nodes[i - 1]
             local dist = (pos - prevPos).Magnitude
@@ -194,12 +192,12 @@ local function visualizePath(nodes)
     end
 end
 
--- === BARITONE-STYLE A* & RAYCAST NAVIGATION ENGINE ===
+-- === BARITONE-STYLE A* & RAYCAST NAVIGATION ENGINE (FIXED) ===
 local GRID_SIZE = 3.5
 
 local function checkRay(startPos, targetPos, ignoreChar)
     local params = RaycastParams.new()
-    params.FilterAncestorsOfTypes = {ignoreChar}
+    params.FilterDescendantsInstances = {ignoreChar} -- FIXED FROM FilterAncestorsOfTypes
     params.FilterType = Enum.RaycastFilterType.Exclude
     local res = workspace:Raycast(startPos, targetPos - startPos, params)
     return res
@@ -207,7 +205,7 @@ end
 
 local function getGroundPos(pos, ignoreChar)
     local params = RaycastParams.new()
-    params.FilterAncestorsOfTypes = {ignoreChar}
+    params.FilterDescendantsInstances = {ignoreChar} -- FIXED FROM FilterAncestorsOfTypes
     params.FilterType = Enum.RaycastFilterType.Exclude
     local res = workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -15, 0), params)
     if res then
@@ -220,12 +218,10 @@ local function calculateBaritonePath(startPos, targetPos)
     local myChar = LocalPlayer.Character
     if not myChar then return {targetPos} end
 
-    -- 1. Direct line of sight raycast check
     if not checkRay(startPos + Vector3.new(0, 2, 0), targetPos + Vector3.new(0, 2, 0), myChar) then
         return {startPos, targetPos}
     end
 
-    -- 2. Grid Node A* Search for Complex Terrain
     local openSet = {}
     local cameFrom = {}
     local gScore = {}
@@ -252,7 +248,6 @@ local function calculateBaritonePath(startPos, targetPos)
     while #openSet > 0 and iterations < 180 do
         iterations = iterations + 1
         
-        -- Get lowest fScore node
         local currentIndex = 1
         local current = openSet[1]
         for i = 2, #openSet do
@@ -263,7 +258,6 @@ local function calculateBaritonePath(startPos, targetPos)
         end
 
         if (current - targetPos).Magnitude <= GRID_SIZE * 1.5 then
-            -- Reconstruct Path
             local path = {targetPos}
             local currKey = nodeKey(current)
             while cameFrom[currKey] do
@@ -284,7 +278,6 @@ local function calculateBaritonePath(startPos, targetPos)
             if ground and math.abs(ground.Y - current.Y) < 6 then
                 neighborPos = Vector3.new(neighborPos.X, ground.Y + 2.5, neighborPos.Z)
 
-                -- Obstacle Collision Raycast
                 local obsCheck = checkRay(current + Vector3.new(0, 1.5, 0), neighborPos + Vector3.new(0, 1.5, 0), myChar)
                 if not obsCheck then
                     local tentativeG = (gScore[nodeKey(current)] or math.huge) + (neighborPos - current).Magnitude
@@ -308,7 +301,6 @@ local function calculateBaritonePath(startPos, targetPos)
         end
     end
 
-    -- Fallback simple path
     return {startPos, targetPos}
 end
 
@@ -455,7 +447,6 @@ local function navigateToPosition(targetPos, targetTool)
         for _, waypointPos in ipairs(computedNodes) do
             if not isScriptAlive then break end
 
-            -- Raycast jump detection
             local obstacle = checkRay(myHRP.Position, waypointPos, myChar)
             if obstacle or waypointPos.Y > myHRP.Position.Y + 1.2 then
                 humanoid.Jump = true
@@ -470,7 +461,6 @@ local function navigateToPosition(targetPos, targetTool)
                 task.wait(0.05)
                 if tick() - startTime > 2.5 then break end
 
-                -- Anti-Stuck auto jump
                 if (myHRP.Position - lastPos).Magnitude < 0.1 then
                     humanoid.Jump = true
                     break
