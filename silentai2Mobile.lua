@@ -1,22 +1,30 @@
--- === DELTA & UNIVERSAL INITIALIZATION ===
+-- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PathfindingService = game:GetService("PathfindingService")
 local RunService = game:GetService("RunService")
 local TextChatService = game:GetService("TextChatService")
 local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
 
 while not LocalPlayer do
     task.wait(0.1)
     LocalPlayer = Players.LocalPlayer
 end
 
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
--- Clean old instances
+-- Target CoreGui or gethui() if available for executor compatibility
+local uiParent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
+
+-- Destroy previous instances
 pcall(function()
-    for _, child in ipairs(PlayerGui:GetChildren()) do
+    for _, child in ipairs(uiParent:GetChildren()) do
+        if child.Name == "SilentAIBotNative" then
+            child:Destroy()
+        end
+    end
+    for _, child in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
         if child.Name == "SilentAIBotNative" then
             child:Destroy()
         end
@@ -72,15 +80,17 @@ local Emotes = {
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 999999
-ScreenGui.Parent = PlayerGui
+ScreenGui.DisplayOrder = 99999999
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = uiParent
 
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 45, 0, 45)
+ToggleBtn.Name = "ToggleBtn"
+ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
 ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 25, 40)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(35, 25, 45)
 ToggleBtn.Text = "🌸"
-ToggleBtn.TextSize = 22
+ToggleBtn.TextSize = 24
 ToggleBtn.Active = true
 ToggleBtn.Parent = ScreenGui
 
@@ -89,8 +99,9 @@ ToggleCorner.CornerRadius = UDim.new(1, 0)
 ToggleCorner.Parent = ToggleBtn
 
 local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 240, 0, 200)
-MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
+MainFrame.Position = UDim2.new(0, 75, 0.3, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
 MainFrame.Visible = true
 MainFrame.Active = true
