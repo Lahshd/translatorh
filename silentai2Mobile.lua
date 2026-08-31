@@ -1,4 +1,4 @@
--- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER SCRIPT v6 ===
+-- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER SCRIPT v7 ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PathfindingService = game:GetService("PathfindingService")
@@ -274,28 +274,23 @@ local function raycastCheckObstacle(startPos, endPos)
     return workspace:Raycast(startPos, (endPos - startPos), rayParams)
 end
 
--- === MAP OBJECT FINDER ===
+-- === MAP OBJECT FINDER (UPDATED - FULL WORKSPACE SCAN) ===
 local function findClosestMapObject(query, referencePos)
     local bestObj, bestPos = nil, nil
     local bestDist = math.huge
-    local isPassthrough = false
+    local lowerQuery = query:lower()
 
-    local sys = workspace:FindFirstChild("System")
-    local map = sys and sys:FindFirstChild("Map")
-
-    local function scanFolder(folder, passFlag)
-        if not folder then return end
-        for _, obj in ipairs(folder:GetDescendants()) do
-            if obj:IsA("BasePart") or obj:IsA("Model") then
-                if obj.Name:lower():find(query) then
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            -- Make sure we aren't targeting a player's character body part
+            if not obj:FindFirstChildOfClass("Humanoid") and not (obj.Parent and obj.Parent:FindFirstChildOfClass("Humanoid")) then
+                if obj.Name:lower():find(lowerQuery) then
                     local pos
-                    local size = Vector3.zero
-                    
                     if obj:IsA("Model") then
-                        local cf, sz = obj:GetBoundingBox()
-                        pos = cf.Position; size = sz
+                        local cf, _ = obj:GetBoundingBox()
+                        pos = cf.Position
                     else
-                        pos = obj.Position; size = obj.Size
+                        pos = obj.Position
                     end
 
                     local dist = (pos - referencePos).Magnitude
@@ -303,22 +298,12 @@ local function findClosestMapObject(query, referencePos)
                         bestDist = dist
                         bestObj = obj
                         bestPos = pos
-                        isPassthrough = passFlag
-                        if isPassthrough then bestPos = bestPos + Vector3.new(0, (size.Y / 2) + 2.5, 0) end
                     end
                 end
             end
         end
     end
-
-    if map then
-        scanFolder(map:FindFirstChild("Objects"), false)
-        scanFolder(map:FindFirstChild("Passthrough"), true)
-        scanFolder(map:FindFirstChild("Doors"), false)
-    end
-    if sys then scanFolder(sys:FindFirstChild("Doors"), false) end
-
-    return bestObj, bestPos, isPassthrough
+    return bestObj, bestPos, false
 end
 
 -- === MOVEMENT ENGINE ===
@@ -474,32 +459,26 @@ local function equipItemByName(itemName)
     local myHRP = myChar:FindFirstChild("HumanoidRootPart")
 
     if myHRP then
-        local searchFolders = { workspace }
-        local spawnersFolder = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Spawners")
-        if spawnersFolder then table.insert(searchFolders, spawnersFolder) end
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            local matches = isGeneric or obj.Name:lower():find(lowerName)
+            if matches and obj ~= myChar and not obj:IsDescendantOf(myChar) then
+                local targetPos = nil
+                if obj:IsA("Tool") then
+                    local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+                    if handle then targetPos = handle.Position end
+                elseif obj:IsA("BasePart") and not obj.Parent:FindFirstChildOfClass("Humanoid") then
+                    targetPos = obj.Position
+                elseif obj:IsA("Model") and not obj:FindFirstChildOfClass("Humanoid") then
+                    local primary = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                    if primary then targetPos = primary.Position end
+                end
 
-        for _, folder in ipairs(searchFolders) do
-            for _, obj in ipairs(folder:GetDescendants()) do
-                local matches = isGeneric or obj.Name:lower():find(lowerName)
-                if matches and obj ~= myChar and not obj:IsDescendantOf(myChar) then
-                    local targetPos = nil
-                    if obj:IsA("Tool") then
-                        local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
-                        if handle then targetPos = handle.Position end
-                    elseif obj:IsA("BasePart") and not obj.Parent:FindFirstChildOfClass("Humanoid") then
-                        targetPos = obj.Position
-                    elseif obj:IsA("Model") and not obj:FindFirstChildOfClass("Humanoid") then
-                        local primary = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                        if primary then targetPos = primary.Position end
-                    end
-
-                    if targetPos then
-                        local dist = (myHRP.Position - targetPos).Magnitude
-                        if dist < closestDist then
-                            closestDist = dist
-                            closestObj = obj
-                            closestPos = targetPos
-                        end
+                if targetPos then
+                    local dist = (myHRP.Position - targetPos).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closestObj = obj
+                        closestPos = targetPos
                     end
                 end
             end
@@ -616,13 +595,12 @@ local function executeSubCommands(player, fullMessage)
     end)
 end
 
--- === AI INTEGRATION (INFINITE RETRY & CONTEXT) ===
+-- === AI INTEGRATION (INFINITE RETRY & FILTERING UPDATED) ===
 local function queryAI(promptText, senderName)
     if not request then return end
     local fullPrompt = senderName .. ": " .. promptText
-    local attempts = 0
 
-    while attempts < 50 do
+    while true do -- INFINITE RETRY LOOP
         for i = 1, #MODEL_FALLBACKS do
             local payload = HttpService:JSONEncode({
                 model = MODEL_FALLBACKS[i],
@@ -651,15 +629,16 @@ local function queryAI(promptText, senderName)
                 if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
                     local rawContent = data.choices[1].message.content
                     if type(rawContent) == "string" and rawContent ~= "" and not rawContent:lower():find("api error") then
-                        return rawContent:gsub("<think>.-</think>", ""):gsub("%b[]", ""):gsub('^"', ''):gsub('"$', ''):gsub("^%s*(.-)%s*$", "%1")
+                        -- Check for the "User Safety: safe" anomaly output by some free API endpoints
+                        if not rawContent:lower():find("user safety: safe") then
+                            return rawContent:gsub("<think>.-</think>", ""):gsub("%b[]", ""):gsub('^"', ''):gsub('"$', ''):gsub("^%s*(.-)%s*$", "%1")
+                        end
                     end
                 end
             end
             task.wait(1.5)
         end
-        attempts = attempts + 1
     end
-    return "*Sighs* Hmph, I don't feel like answering that..."
 end
 
 local function processIncomingMessage(player, messageText)
