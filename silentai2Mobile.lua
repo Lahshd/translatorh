@@ -1,4 +1,4 @@
--- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER SCRIPT v5 ===
+-- === UNIVERSAL EXECUTOR & CONTAINER RESOLVER SCRIPT v6 ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PathfindingService = game:GetService("PathfindingService")
@@ -39,12 +39,12 @@ local MODEL_FALLBACKS = {
 }
 
 local WALK_SPEED = 16
-local RUN_SPEED = 36 -- Game subtracts 3 by default
+local RUN_SPEED = 36
 
 local botEnabled = true
 local isProcessing = false
 local followingPlayer = nil
-local activePathTask = nil
+local currentPathId = 0 -- Mutex for pathfinding threads
 local currentAnimationTrack = nil
 local pathFolder = nil
 
@@ -80,10 +80,7 @@ ToggleBtn.Text = "🌸"
 ToggleBtn.TextSize = 24
 ToggleBtn.Active = true
 ToggleBtn.Parent = ScreenGui
-
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(1, 0)
-ToggleCorner.Parent = ToggleBtn
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
@@ -94,10 +91,7 @@ MainFrame.Visible = true
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 16)
-MainCorner.Parent = MainFrame
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 16)
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
@@ -108,10 +102,7 @@ TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = MainFrame
-
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 16)
-TitleCorner.Parent = TitleLabel
+Instance.new("UICorner", TitleLabel).CornerRadius = UDim.new(0, 16)
 
 local BottomCover = Instance.new("Frame")
 BottomCover.Size = UDim2.new(1, 0, 0, 10)
@@ -142,10 +133,7 @@ local function createRoundedButton(name, pos, color, text, parent)
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 12
     btn.Parent = parent
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = btn
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     return btn
 end
 
@@ -154,14 +142,12 @@ local ModeBtn = createRoundedButton("ModeBtn", UDim2.new(0.05, 0, 0.56, 0), Colo
 local StopFollowBtn = createRoundedButton("StopBtn", UDim2.new(0.05, 0, 0.74, 0), Color3.fromRGB(160, 50, 50), "Stop Following", MainFrame)
 
 ToggleBtn.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
-
 BotToggleBtn.MouseButton1Click:Connect(function()
     botEnabled = not botEnabled
     BotToggleBtn.Text = botEnabled and "BOT: ON" or "BOT: OFF"
     BotToggleBtn.BackgroundColor3 = botEnabled and Color3.fromRGB(40, 160, 80) or Color3.fromRGB(160, 50, 50)
     StatusLabel.Text = botEnabled and "Status: ACTIVE" or "Status: INACTIVE"
 end)
-
 ModeBtn.MouseButton1Click:Connect(function()
     currentModeIndex = (currentModeIndex % #Modes) + 1
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
@@ -214,10 +200,7 @@ local function sendMessage(msg)
         local textChannels = TextChatService:FindFirstChild("TextChannels")
         if textChannels then
             local general = textChannels:FindFirstChild("RBXGeneral")
-            if general then
-                general:SendAsync(msg)
-                return
-            end
+            if general then general:SendAsync(msg) return end
         end
         local sayRemote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
         if sayRemote then sayRemote:FireServer(msg, "All") end
@@ -241,31 +224,20 @@ local function playEmote(emoteQuery)
 
     local lowerQuery = emoteQuery:lower()
     local animId = nil
-
-    -- 1. Try to fetch dynamically from player data
     local targetPlayer = Players:FindFirstChild("jsbhsnbfnsnNxb")
+
     if targetPlayer and targetPlayer:FindFirstChild("Data") and targetPlayer.Data:FindFirstChild("Emotes") then
         for _, emoteVal in pairs(targetPlayer.Data.Emotes:GetChildren()) do
-            if emoteVal:IsA("BoolValue") and emoteVal.Value == true then
-                if lowerQuery:find(emoteVal.Name:lower()) then
-                    if tonumber(emoteVal.Name) then
-                        animId = "rbxassetid://" .. emoteVal.Name
-                    else
-                        animId = HardcodedEmotes[emoteVal.Name:lower()]
-                    end
-                    break
-                end
+            if emoteVal:IsA("BoolValue") and emoteVal.Value == true and lowerQuery:find(emoteVal.Name:lower()) then
+                animId = tonumber(emoteVal.Name) and "rbxassetid://" .. emoteVal.Name or HardcodedEmotes[emoteVal.Name:lower()]
+                break
             end
         end
     end
 
-    -- 2. Fallback to hardcoded dictionary if no dynamic match found
     if not animId then
         for name, id in pairs(HardcodedEmotes) do
-            if lowerQuery:find(name) then
-                animId = id
-                break
-            end
+            if lowerQuery:find(name) then animId = id break end
         end
     end
 
@@ -288,12 +260,9 @@ local function getFilterList()
     if followingPlayer and followingPlayer.Character then table.insert(filterList, followingPlayer.Character) end
     if pathFolder then table.insert(filterList, pathFolder) end 
 
-    local doorsFolder1 = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Doors")
-    if doorsFolder1 then table.insert(filterList, doorsFolder1) end
-
-    local mapFolder = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Map")
-    local doorsFolder2 = mapFolder and mapFolder:FindFirstChild("Doors")
-    if doorsFolder2 then table.insert(filterList, doorsFolder2) end
+    local sys = workspace:FindFirstChild("System")
+    if sys and sys:FindFirstChild("Doors") then table.insert(filterList, sys.Doors) end
+    if sys and sys:FindFirstChild("Map") and sys.Map:FindFirstChild("Doors") then table.insert(filterList, sys.Map.Doors) end
 
     return filterList
 end
@@ -302,22 +271,17 @@ local function raycastCheckObstacle(startPos, endPos)
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = getFilterList()
-
-    local direction = (endPos - startPos)
-    local result = workspace:Raycast(startPos, direction, rayParams)
-    return result
+    return workspace:Raycast(startPos, (endPos - startPos), rayParams)
 end
 
--- === MAP OBJECT & COUCH FINDER ===
+-- === MAP OBJECT FINDER ===
 local function findClosestMapObject(query, referencePos)
-    local bestObj = nil
-    local bestPos = nil
+    local bestObj, bestPos = nil, nil
     local bestDist = math.huge
     local isPassthrough = false
 
     local sys = workspace:FindFirstChild("System")
     local map = sys and sys:FindFirstChild("Map")
-    if not map then return nil, nil, false end
 
     local function scanFolder(folder, passFlag)
         if not folder then return end
@@ -329,11 +293,9 @@ local function findClosestMapObject(query, referencePos)
                     
                     if obj:IsA("Model") then
                         local cf, sz = obj:GetBoundingBox()
-                        pos = cf.Position
-                        size = sz
+                        pos = cf.Position; size = sz
                     else
-                        pos = obj.Position
-                        size = obj.Size
+                        pos = obj.Position; size = obj.Size
                     end
 
                     local dist = (pos - referencePos).Magnitude
@@ -342,26 +304,27 @@ local function findClosestMapObject(query, referencePos)
                         bestObj = obj
                         bestPos = pos
                         isPassthrough = passFlag
-                        
-                        if isPassthrough then
-                            bestPos = bestPos + Vector3.new(0, (size.Y / 2) + 2.5, 0)
-                        end
+                        if isPassthrough then bestPos = bestPos + Vector3.new(0, (size.Y / 2) + 2.5, 0) end
                     end
                 end
             end
         end
     end
 
-    scanFolder(map:FindFirstChild("Objects"), false)
-    scanFolder(map:FindFirstChild("Passthrough"), true)
+    if map then
+        scanFolder(map:FindFirstChild("Objects"), false)
+        scanFolder(map:FindFirstChild("Passthrough"), true)
+        scanFolder(map:FindFirstChild("Doors"), false)
+    end
+    if sys then scanFolder(sys:FindFirstChild("Doors"), false) end
 
     return bestObj, bestPos, isPassthrough
 end
 
 -- === MOVEMENT ENGINE ===
 local function stopMovement()
+    currentPathId = currentPathId + 1
     followingPlayer = nil
-    if activePathTask then task.cancel(activePathTask) activePathTask = nil end
     stopEmote()
     clearPathVisuals()
     
@@ -380,11 +343,26 @@ StopFollowBtn.MouseButton1Click:Connect(function()
     sendMessage("Stopped moving! ♡")
 end)
 
+local function moveWithTimeout(humanoid, targetPosition, mutexId)
+    if currentPathId ~= mutexId then return false end
+    humanoid:MoveTo(targetPosition)
+    local moveFinished = false
+    local conn = humanoid.MoveToFinished:Connect(function() moveFinished = true end)
+    local t = 0
+    while not moveFinished and t < 15 and currentPathId == mutexId do
+        task.wait(0.1)
+        t = t + 1
+    end
+    conn:Disconnect()
+    return currentPathId == mutexId
+end
+
 local function navigateToPosition(targetPos, targetTool)
     stopEmote()
-    if activePathTask then task.cancel(activePathTask) activePathTask = nil end
+    currentPathId = currentPathId + 1
+    local thisPathId = currentPathId
     
-    activePathTask = task.spawn(function()
+    task.spawn(function()
         local myChar = LocalPlayer.Character
         if not myChar then return end
         local humanoid = myChar:FindFirstChildOfClass("Humanoid")
@@ -392,19 +370,12 @@ local function navigateToPosition(targetPos, targetTool)
         if not humanoid or not myHRP then return end
 
         humanoid.WalkSpeed = RUN_SPEED
-
         local obstacle = raycastCheckObstacle(myHRP.Position, targetPos)
+
         if not obstacle then
-            humanoid:MoveTo(targetPos)
-            humanoid.MoveToFinished:Wait()
+            moveWithTimeout(humanoid, targetPos, thisPathId)
         else
-            local path = PathfindingService:CreatePath({
-                AgentRadius = 2,
-                AgentHeight = 5,
-                AgentCanJump = true,
-                Costs = { Doors = 1 }
-            })
-            
+            local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true, Costs = { Doors = 1 } })
             local success = pcall(function() path:ComputeAsync(myHRP.Position, targetPos) end)
 
             if success and path.Status == Enum.PathStatus.Success then
@@ -412,30 +383,30 @@ local function navigateToPosition(targetPos, targetTool)
                 visualizePath(waypoints)
 
                 for _, waypoint in ipairs(waypoints) do
+                    if currentPathId ~= thisPathId then return end
                     if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
-                    humanoid:MoveTo(waypoint.Position)
-                    humanoid.MoveToFinished:Wait()
+                    if not moveWithTimeout(humanoid, waypoint.Position, thisPathId) then return end
                 end
             else
-                humanoid:MoveTo(targetPos)
-                humanoid.MoveToFinished:Wait()
+                moveWithTimeout(humanoid, targetPos, thisPathId)
             end
         end
 
         task.wait(0.3)
-        if targetTool and targetTool:IsA("Tool") then
+        if targetTool and targetTool:IsA("Tool") and currentPathId == thisPathId then
             humanoid:EquipTool(targetTool)
         end
-        clearPathVisuals()
+        if currentPathId == thisPathId then clearPathVisuals() end
     end)
 end
 
 local function startFollowingPlayer(targetPlayer)
     stopMovement()
     followingPlayer = targetPlayer
+    local thisPathId = currentPathId
 
-    activePathTask = task.spawn(function()
-        while followingPlayer and followingPlayer.Character do
+    task.spawn(function()
+        while followingPlayer and followingPlayer.Character and currentPathId == thisPathId do
             local targetHRP = followingPlayer.Character:FindFirstChild("HumanoidRootPart")
             local myChar = LocalPlayer.Character
             if not myChar or not targetHRP then break end
@@ -458,11 +429,11 @@ local function startFollowingPlayer(targetPlayer)
                     if success and path.Status == Enum.PathStatus.Success then
                         local waypoints = path:GetWaypoints()
                         visualizePath(waypoints)
-                        for i = 1, math.min(#waypoints, 4) do
+                        for i = 1, math.min(#waypoints, 3) do
+                            if currentPathId ~= thisPathId or followingPlayer ~= targetPlayer then return end
                             local wp = waypoints[i]
                             if wp.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
-                            humanoid:MoveTo(wp.Position)
-                            humanoid.MoveToFinished:Wait()
+                            if not moveWithTimeout(humanoid, wp.Position, thisPathId) then return end
                         end
                     else
                         humanoid:MoveTo(targetHRP.Position)
@@ -503,10 +474,9 @@ local function equipItemByName(itemName)
     local myHRP = myChar:FindFirstChild("HumanoidRootPart")
 
     if myHRP then
-        local searchFolders = {}
+        local searchFolders = { workspace }
         local spawnersFolder = workspace:FindFirstChild("System") and workspace.System:FindFirstChild("Spawners")
         if spawnersFolder then table.insert(searchFolders, spawnersFolder) end
-        table.insert(searchFolders, workspace)
 
         for _, folder in ipairs(searchFolders) do
             for _, obj in ipairs(folder:GetDescendants()) do
@@ -537,18 +507,10 @@ local function equipItemByName(itemName)
     end
 
     if closestPos then
-        local toolToEquip = closestObj:IsA("Tool") and closestObj or nil
-        navigateToPosition(closestPos, toolToEquip)
+        navigateToPosition(closestPos, closestObj:IsA("Tool") and closestObj or nil)
         return true
     end
     return false
-end
-
-local function useEquippedTool()
-    local myChar = LocalPlayer.Character
-    if not myChar then return end
-    local tool = myChar:FindFirstChildOfClass("Tool")
-    if tool then tool:Activate() end
 end
 
 -- === COMMAND EXECUTION ===
@@ -568,29 +530,34 @@ local function processSingleAction(player, actionStr)
             if humanoid then humanoid:UnequipTools() end
         end
     elseif cmd:find("use") then
-        useEquippedTool()
+        local myChar = LocalPlayer.Character
+        if myChar then
+            local tool = myChar:FindFirstChildOfClass("Tool")
+            if tool then tool:Activate() end
+        end
     elseif cmd:find("emote") or cmd:find("dance") then
         playEmote(cmd)
     elseif cmd:find("follow") then
         startFollowingPlayer(player)
         
-    -- RAYCASTING: "What am I staring at?"
-    elseif cmd:find("what am i staring at") or cmd:find("what am i looking at") then
-        if player.Character and player.Character:FindFirstChild("Head") then
-            local head = player.Character.Head
-            local rayParams = RaycastParams.new()
-            rayParams.FilterType = Enum.RaycastFilterType.Exclude
-            rayParams.FilterDescendantsInstances = {player.Character, LocalPlayer.Character}
+    -- LOOK AT ME (Body + Camera adjustments)
+    elseif cmd:find("look at me") or cmd:find("face me") then
+        if player.Character and player.Character:FindFirstChild("Head") and player.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHead = player.Character.Head
+            local targetHRP = player.Character.HumanoidRootPart
+            local myChar = LocalPlayer.Character
             
-            local result = workspace:Raycast(head.Position, head.CFrame.LookVector * 100, rayParams)
-            if result and result.Instance then
-                sendMessage("You're staring at " .. result.Instance.Name .. "!")
-            else
-                sendMessage("I don't see anything, b-baka!")
+            if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                local hrp = myChar.HumanoidRootPart
+                -- Turn Character Body
+                hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetHRP.Position.X, hrp.Position.Y, targetHRP.Position.Z))
+                -- Move Player Camera
+                local cam = workspace.CurrentCamera
+                if cam then cam.CFrame = CFrame.lookAt(cam.CFrame.Position, targetHead.Position) end
             end
         end
 
-    -- MAP OBJECTS / COUCHES / PLAYER TARGETING (Improved Regex)
+    -- MAP OBJECTS / COUCHES / PLAYER TARGETING
     elseif cmd:find("go to") or cmd:find("goto") or cmd:find("head to") or cmd:find("sit in") or cmd:find("come") then
         local isPlayer = false
         local targetPlayer = nil
@@ -601,9 +568,7 @@ local function processSingleAction(player, actionStr)
         else
             for _, p in ipairs(Players:GetPlayers()) do
                 if cmd:find(p.Name:lower()) or cmd:find(p.DisplayName:lower()) then
-                    isPlayer = true
-                    targetPlayer = p
-                    break
+                    isPlayer = true; targetPlayer = p; break
                 end
             end
         end
@@ -611,41 +576,36 @@ local function processSingleAction(player, actionStr)
         if isPlayer and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             navigateToPosition(targetPlayer.Character.HumanoidRootPart.Position, nil)
         else
-            -- Map Object Query
             local objQuery = cmd:match("go to (.*)") or cmd:match("goto (.*)") or cmd:match("head to (.*)") or cmd:match("sit in (.*)")
             if objQuery then
-                -- Strip filler text to get pure object name
                 objQuery = objQuery:gsub("closest to me", ""):gsub("closest to you", ""):gsub("near me", ""):gsub("near you", "")
                 objQuery = objQuery:gsub("that ", ""):gsub("over there", ""):gsub("^a ", ""):gsub("^an ", ""):gsub("^the ", ""):gsub("%s+$", ""):gsub("^%s+", "")
                 
                 local refPos = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position or LocalPlayer.Character.HumanoidRootPart.Position
-                
                 local _, targetPos, _ = findClosestMapObject(objQuery, refPos)
-                if targetPos then
-                    navigateToPosition(targetPos, nil)
-                end
+                if targetPos then navigateToPosition(targetPos, nil) end
             end
         end
         
     elseif cmd:find("equip") or cmd:find("take out") or cmd:find("find") or cmd:find("get") then
         local targetItem = cmd:match("equip%s+(.+)") or cmd:match("take out%s+(.+)") or cmd:match("find%s+(.+)") or cmd:match("get%s+(.+)")
-        if targetItem then
-            equipItemByName(targetItem)
-        end
-    elseif cmd:find("stop") then
+        if targetItem then equipItemByName(targetItem) end
+    elseif cmd == "stop" or cmd == "stop moving" or cmd == "halt" then
         stopMovement()
     end
 end
 
 local function executeSubCommands(player, fullMessage)
     task.spawn(function()
-        local cleanedMsg = fullMessage:gsub("and then", "then")
+        -- Normalize text and remove commas for multi-command sequencing
+        local cleanedMsg = fullMessage:lower():gsub("^%s*silent%s*", ""):gsub(",", " and "):gsub("and then", "then")
         local rawCommands = cleanedMsg:split(" then ")
         local chain = {}
         
         for _, segment in ipairs(rawCommands) do
             for _, subSegment in ipairs(segment:split(" and ")) do
-                table.insert(chain, subSegment)
+                local trimmed = subSegment:gsub("^%s*(.-)%s*$", "%1")
+                if trimmed ~= "" then table.insert(chain, trimmed) end
             end
         end
 
@@ -656,46 +616,48 @@ local function executeSubCommands(player, fullMessage)
     end)
 end
 
--- === AI INTEGRATION (WITH RETRY & HEAD TURN) ===
+-- === AI INTEGRATION (INFINITE RETRY & CONTEXT) ===
 local function queryAI(promptText, senderName)
     if not request then return end
     local fullPrompt = senderName .. ": " .. promptText
+    local attempts = 0
 
-    for i = 1, #MODEL_FALLBACKS do
-        local modelToUse = MODEL_FALLBACKS[i]
-        local payload = HttpService:JSONEncode({
-            model = modelToUse,
-            max_tokens = 60,
-            temperature = 0.7,
-            messages = {
-                { role = "system", content = Modes[currentModeIndex].Prompt },
-                { role = "user", content = fullPrompt }
-            }
-        })
-
-        local success, response = pcall(function()
-            return request({
-                Url = OPENROUTER_URL,
-                Method = "POST",
-                Headers = {
-                    ["Content-Type"] = "application/json",
-                    ["Authorization"] = "Bearer " .. OPENROUTER_API_KEY:gsub("%s+", "")
-                },
-                Body = payload
+    while attempts < 50 do
+        for i = 1, #MODEL_FALLBACKS do
+            local payload = HttpService:JSONEncode({
+                model = MODEL_FALLBACKS[i],
+                max_tokens = 60,
+                temperature = 0.7,
+                messages = {
+                    { role = "system", content = Modes[currentModeIndex].Prompt },
+                    { role = "user", content = fullPrompt }
+                }
             })
-        end)
 
-        if success and response and response.StatusCode == 200 and response.Body then
-            local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
-            -- Verify response doesn't contain immediate error flags
-            if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
-                local rawContent = data.choices[1].message.content
-                if type(rawContent) == "string" and rawContent ~= "" and not rawContent:lower():find("api error") then
-                    return rawContent:gsub("<think>.-</think>", ""):gsub("%b[]", ""):gsub('^"', ''):gsub('"$', ''):gsub("^%s*(.-)%s*$", "%1")
+            local success, response = pcall(function()
+                return request({
+                    Url = OPENROUTER_URL,
+                    Method = "POST",
+                    Headers = {
+                        ["Content-Type"] = "application/json",
+                        ["Authorization"] = "Bearer " .. OPENROUTER_API_KEY:gsub("%s+", "")
+                    },
+                    Body = payload
+                })
+            end)
+
+            if success and response and response.StatusCode == 200 and response.Body then
+                local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
+                if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
+                    local rawContent = data.choices[1].message.content
+                    if type(rawContent) == "string" and rawContent ~= "" and not rawContent:lower():find("api error") then
+                        return rawContent:gsub("<think>.-</think>", ""):gsub("%b[]", ""):gsub('^"', ''):gsub('"$', ''):gsub("^%s*(.-)%s*$", "%1")
+                    end
                 end
             end
+            task.wait(1.5)
         end
-        task.wait(1) -- Retry delay
+        attempts = attempts + 1
     end
     return "*Sighs* Hmph, I don't feel like answering that..."
 end
@@ -705,29 +667,41 @@ local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
 
     if lowerMsg:find("tsundere") then
-        currentModeIndex = 2
-        ModeBtn.Text = "Mode: Tsundere Mode"
+        currentModeIndex = 2; ModeBtn.Text = "Mode: Tsundere Mode"
     elseif lowerMsg:find("owo") then
-        currentModeIndex = 1
-        ModeBtn.Text = "Mode: OwO Mode"
+        currentModeIndex = 1; ModeBtn.Text = "Mode: OwO Mode"
     elseif lowerMsg:find("yandere") then
-        currentModeIndex = 3
-        ModeBtn.Text = "Mode: Yandere Mode"
+        currentModeIndex = 3; ModeBtn.Text = "Mode: Yandere Mode"
     end
 
     if lowerMsg:find("silent") or lowerMsg:find("bot") then
-        -- Execute physical commands instantly
         executeSubCommands(player, lowerMsg)
 
-        -- Handle API fetch asynchronously without blocking physical code
         if not isProcessing then
             isProcessing = true
             task.spawn(function()
-                local reply = queryAI(messageText, player.DisplayName or player.Name)
+                local aiPromptText = messageText
+                
+                -- RAYCASTING: Inject Context Before Asking AI
+                if lowerMsg:find("what am i staring at") or lowerMsg:find("what am i looking at") then
+                    if player.Character and player.Character:FindFirstChild("Head") then
+                        local head = player.Character.Head
+                        local rayParams = RaycastParams.new()
+                        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                        rayParams.FilterDescendantsInstances = {player.Character, LocalPlayer.Character}
+                        local result = workspace:Raycast(head.Position, head.CFrame.LookVector * 100, rayParams)
+                        
+                        if result and result.Instance then
+                            aiPromptText = messageText .. " (Context: I am currently staring at " .. result.Instance.Name .. ")"
+                        else
+                            aiPromptText = messageText .. " (Context: I am staring at nothing in particular)"
+                        end
+                    end
+                end
+
+                local reply = queryAI(aiPromptText, player.DisplayName or player.Name)
                 if reply then 
                     sendMessage(reply) 
-                    
-                    -- Look at Speaker if AI agrees
                     local lr = reply:lower()
                     if lr:find("ok") or lr:find("fine") or lr:find("sure") or lr:find("alright") or lr:find("whatever") then
                         local myChar = LocalPlayer.Character
@@ -735,7 +709,6 @@ local function processIncomingMessage(player, messageText)
                         if myChar and myChar:FindFirstChild("HumanoidRootPart") and speakerChar and speakerChar:FindFirstChild("Head") then
                             local hrp = myChar.HumanoidRootPart
                             local headPos = speakerChar.Head.Position
-                            -- Look at player while locking the Y axis to stay upright
                             hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(headPos.X, hrp.Position.Y, headPos.Z))
                         end
                     end
