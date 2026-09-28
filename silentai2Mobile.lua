@@ -14,7 +14,7 @@ end
 
 local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
 
--- Target CoreGui or gethui() if available for executor compatibility
+-- Target CoreGui or gethui()
 local uiParent = (gethui and gethui()) or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
 
 -- Destroy previous instances
@@ -39,7 +39,7 @@ local MODEL_FALLBACKS = {
 }
 
 local WALK_SPEED = 16
-local RUN_SPEED = 36
+local RUN_SPEED = 16
 
 local botEnabled = true
 local isProcessing = false
@@ -48,7 +48,7 @@ local currentPathId = 0 -- Mutex for pathfinding threads
 local currentAnimationTrack = nil
 local pathFolder = nil
 
-local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 12 words. Do not output thinking, reasoning, or meta remarks."
+local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 12 words. Do not output thinking, reasoning, or meta remarks. Keep under 200 characters."
 
 local currentModeIndex = 1
 local Modes = {
@@ -58,12 +58,12 @@ local Modes = {
 }
 
 local HardcodedEmotes = {
-    ["qt"] = "rbxassetid://507770818",
-    ["california girls"] = "rbxassetid://591745989",
-    ["captain dance"] = "rbxassetid://10214311282"
+    ["qt"] = "fuckyou",
+    ["california girls"] = "fuckyou",
+    ["captain dance"] = "fuckyou"
 }
 
--- === NATIVE GUI BUILDER ===
+-- === silly gui guys ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SilentAIBotNative"
 ScreenGui.ResetOnSpawn = false
@@ -153,7 +153,7 @@ ModeBtn.MouseButton1Click:Connect(function()
     ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
--- === PATH VISUALIZER ===
+-- === path view thingy ===
 local function clearPathVisuals()
     if pathFolder then
         pathFolder:Destroy()
@@ -193,7 +193,7 @@ local function visualizePath(waypoints)
     end
 end
 
--- === CHAT SENDER ===
+-- === chat ===
 local function sendMessage(msg)
     if not msg or msg == "" then return end
     pcall(function()
@@ -207,7 +207,7 @@ local function sendMessage(msg)
     end)
 end
 
--- === ANIMATION SYSTEM ===
+-- === reanimation ===
 local function stopEmote()
     if currentAnimationTrack then
         currentAnimationTrack:Stop()
@@ -252,7 +252,7 @@ local function playEmote(emoteQuery)
     end
 end
 
--- === DOOR & COLLISION FILTERING ===
+-- === door and collisions ===
 local function getFilterList()
     local filterList = {}
     local myChar = LocalPlayer.Character
@@ -274,7 +274,7 @@ local function raycastCheckObstacle(startPos, endPos)
     return workspace:Raycast(startPos, (endPos - startPos), rayParams)
 end
 
--- === MAP OBJECT FINDER (UPDATED - FULL WORKSPACE SCAN) ===
+-- === object finder ===
 local function findClosestMapObject(query, referencePos)
     local bestObj, bestPos = nil, nil
     local bestDist = math.huge
@@ -306,7 +306,7 @@ local function findClosestMapObject(query, referencePos)
     return bestObj, bestPos, false
 end
 
--- === MOVEMENT ENGINE ===
+-- === pathfinding raycasting ===
 local function stopMovement()
     currentPathId = currentPathId + 1
     followingPlayer = nil
@@ -434,7 +434,7 @@ local function startFollowingPlayer(targetPlayer)
     end)
 end
 
--- === INVENTORY & ITEM SEARCH ===
+-- === backpack ===
 local function equipItemByName(itemName)
     local myChar = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
@@ -492,7 +492,7 @@ local function equipItemByName(itemName)
     return false
 end
 
--- === COMMAND EXECUTION ===
+-- === commands ===
 local function processSingleAction(player, actionStr)
     local cmd = actionStr:lower():gsub("^%s*(.-)%s*$", "%1")
 
@@ -536,7 +536,7 @@ local function processSingleAction(player, actionStr)
             end
         end
 
-    -- MAP OBJECTS / COUCHES / PLAYER TARGETING
+    -- objects
     elseif cmd:find("go to") or cmd:find("goto") or cmd:find("head to") or cmd:find("sit in") or cmd:find("come") then
         local isPlayer = false
         local targetPlayer = nil
@@ -595,7 +595,7 @@ local function executeSubCommands(player, fullMessage)
     end)
 end
 
--- === AI INTEGRATION (INFINITE RETRY & FILTERING UPDATED) ===
+-- === AI INTEGRATION ===
 local function queryAI(promptText, senderName)
     if not request then return end
     local fullPrompt = senderName .. ": " .. promptText
@@ -661,7 +661,7 @@ local function processIncomingMessage(player, messageText)
             task.spawn(function()
                 local aiPromptText = messageText
                 
-                -- RAYCASTING: Inject Context Before Asking AI
+                -- RAYCASTING: the shit that i hate
                 if lowerMsg:find("what am i staring at") or lowerMsg:find("what am i looking at") then
                     if player.Character and player.Character:FindFirstChild("Head") then
                         local head = player.Character.Head
@@ -698,7 +698,7 @@ local function processIncomingMessage(player, messageText)
     end
 end
 
--- === CHAT HOOKS ===
+-- === CHAT HOOKING ===
 pcall(function()
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
         TextChatService.MessageReceived:Connect(function(textChatMessage)
