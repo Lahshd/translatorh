@@ -1,397 +1,259 @@
--- Services & Dependencies
+-- === DELTA & UNIVERSAL INITIALIZATION ===
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local CoreGui = (gethui and gethui()) or game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TextChatService = game:GetService("TextChatService")
-local HttpService = game:GetService("HttpService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 
-local request = request or http.request or http_request
-
--- Chat System Detection
-local isLegacyChat = false
-local DefaultServerEvents = ReplicatedStorage:FindFirstChild("DefaultServerEvents")
-if DefaultServerEvents and DefaultServerEvents:FindFirstChild("SayMessageRequest") then
-    isLegacyChat = true
+-- Mobile polling loop to prevent infinite hanging
+while not LocalPlayer do
+    task.wait(0.1)
+    LocalPlayer = Players.LocalPlayer
 end
 
--- === CONFIG & STATE ===
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local TextChatService = game:GetService("TextChatService")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+
+-- Executor HTTP Request Resolver
+local request = request or http.request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or (delta and delta.request)
+
+-- Cleanup pre-existing UI instances
+pcall(function()
+    for _, child in ipairs(PlayerGui:GetChildren()) do
+        if child.Name == "SilentAIBotNative" then
+            child:Destroy()
+        end
+    end
+end)
+
+-- Configuration & State
 local OPENROUTER_API_KEY = "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"
 local OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-local currentMode = 1 -- 1: OwO, 2: Tsundere, 3: Yandere
-local botEnabled = false
-local isKeyValid = false
+local botEnabled = true
+local continuousTalk = true
 local isProcessing = false
+local lastActiveUser = nil
+local lastActiveTime = 0
+local targetFollowPlayer = nil
+local followConnection = nil
+local chatConnections = {}
 
--- Key Validation
-local function checkKeyValidity(key)
-    if not key or key == "" or key:find("PASTE_YOUR") then return false end
-    if key:sub(1, 9) == "sk-or-v1-" and #key >= 40 then return true end
-    return false
-end
-isKeyValid = checkKeyValidity(OPENROUTER_API_KEY)
+-- Mandatory system rule enforced across all modes to ban reasoning/thoughts output
+local STRICT_RULE = " CRITICAL DIRECTIVE: Output ONLY your direct spoken dialogue line. Under NO circumstance output reasoning, thinking process, system notes, internal thoughts, or meta text. Do NOT wrap output in codeblocks or quotes."
 
--- Dynamic Memory Storage
-local PlayerMemory = {} -- Format: ["displayname_lowercase"] = "custom notes"
-
--- Personality Themes
-local Themes = {
-    [1] = {
-        Name = "OwO Mode",
-        Primary = Color3.fromRGB(255, 145, 195),
-        Bg = Color3.fromRGB(32, 25, 36),
-        SystemPrompt = "You are an ultra-cute anime furry bot named Silent. Respond to the message in OwO style with stutters. Keep your response under 15 words so it fits in Roblox chat."
+local currentModeIndex = 1
+local Modes = {
+    {
+        Name = "OwO Mode", 
+        Prompt = "You are an ultra-cute anime furry bot named Silent. Respond in OwO style with stutters. Keep replies strictly under 12 words." .. STRICT_RULE,
+        ThinkingMsg = "H-Hold on, my brain is processing so many things >w<!"
     },
-    [2] = {
-        Name = "Tsundere Mode",
-        Primary = Color3.fromRGB(240, 60, 100),
-        Bg = Color3.fromRGB(36, 22, 28),
-        SystemPrompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep your response under 15 words so it fits in Roblox chat."
+    {
+        Name = "Tsundere Mode", 
+        Prompt = "You are a flustered anime Tsundere bot named Silent. Respond with denial, 'b-baka!', and sass. Keep replies strictly under 12 words." .. STRICT_RULE,
+        ThinkingMsg = "B-Baka! Don't rush me, I'm already thinking!"
     },
-    [3] = {
-        Name = "Yandere Mode",
-        Primary = Color3.fromRGB(160, 35, 75),
-        Bg = Color3.fromRGB(22, 18, 26),
-        SystemPrompt = "You are a dark, possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep your response under 15 words so it fits in Roblox chat."
+    {
+        Name = "Yandere Mode", 
+        Prompt = "You are a dark possessive Yandere bot named Silent. Respond with intense affection and subtle threats. Keep replies strictly under 12 words." .. STRICT_RULE,
+        ThinkingMsg = "Wait your turn... my mind is busy right now~ ♡"
     }
 }
 
--- === GUI SETUP ===
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SilentAIBotGui"
-ScreenGui.Parent = CoreGui
+-- === CHAT SENDER ===
+local function sendMessage(msg)
+    if not msg or msg == "" then return end
+    pcall(function()
+        local textChannels = TextChatService:FindFirstChild("TextChannels")
+        if textChannels then
+            local general = textChannels:FindFirstChild("RBXGeneral")
+            if general then
+                general:SendAsync(msg)
+                return
+            end
+        end
+        local sayRemote = game:GetService("ReplicatedStorage"):FindFirstChild("SayMessageRequest", true)
+        if sayRemote then sayRemote:FireServer(msg, "All") end
+    end)
+end
 
--- Main Container Frame
+-- === NATIVE GUI ENGINE ===
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SilentAIBotNative"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999999
+ScreenGui.Parent = PlayerGui
+
+-- Toggle Button (Floating)
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 45, 0, 45)
+ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 25, 40)
+ToggleBtn.Text = "🌸"
+ToggleBtn.TextSize = 22
+ToggleBtn.Active = true
+ToggleBtn.Parent = ScreenGui
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.Parent = ToggleBtn
+
+-- Main Control Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 560, 0, 240)
-MainFrame.Position = UDim2.new(0.5, -280, 0.4, -120)
-MainFrame.BackgroundColor3 = Themes[1].Bg
-MainFrame.BorderSizePixel = 0
+MainFrame.Size = UDim2.new(0, 240, 0, 200)
+MainFrame.Position = UDim2.new(0, 70, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 28)
+MainFrame.Visible = true
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 14)
+MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Thickness = 2
-MainStroke.Color = Themes[1].Primary
-MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-MainStroke.Parent = MainFrame
-
--- Left Section Container
-local LeftContainer = Instance.new("Frame")
-LeftContainer.Size = UDim2.new(0.6, 0, 1, 0)
-LeftContainer.BackgroundTransparency = 1
-LeftContainer.Parent = MainFrame
-
--- Header
+-- Title Bar
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0.9, 0, 0.16, 0)
-TitleLabel.Position = UDim2.new(0.05, 0, 0.06, 0)
-TitleLabel.Text = "🌸 Silent AI (OwO Mode)"
-TitleLabel.TextColor3 = Themes[1].Primary
-TitleLabel.BackgroundTransparency = 1
+TitleLabel.Size = UDim2.new(1, 0, 0, 30)
+TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
+TitleLabel.Text = "  🌸 Silent AI (Smart Bot)"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 16
-TitleLabel.Parent = LeftContainer
+TitleLabel.TextSize = 12
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = TitleLabel
+
+-- Close Button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 24, 0, 24)
+CloseBtn.Position = UDim2.new(1, -27, 0, 3)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = MainFrame
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
 
 -- Status Label
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0.9, 0, 0.1, 0)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.22, 0)
-StatusLabel.Text = "Listening for: 'hey silent...'"
-StatusLabel.TextColor3 = Color3.fromRGB(160, 150, 175)
+StatusLabel.Size = UDim2.new(0.9, 0, 0, 35)
+StatusLabel.Position = UDim2.new(0.05, 0, 0.18, 0)
+StatusLabel.Text = "Status: ACTIVE\nListening for 'silent' or $commands"
+StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 11
-StatusLabel.Parent = LeftContainer
-
--- Slider Section
-local SliderLabel = Instance.new("TextLabel")
-SliderLabel.Size = UDim2.new(0.9, 0, 0.1, 0)
-SliderLabel.Position = UDim2.new(0.05, 0, 0.38, 0)
-SliderLabel.Text = "PERSONALITY MATRIX"
-SliderLabel.TextColor3 = Color3.fromRGB(140, 130, 150)
-SliderLabel.BackgroundTransparency = 1
-SliderLabel.Font = Enum.Font.GothamBold
-SliderLabel.TextSize = 10
-SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
-SliderLabel.Parent = LeftContainer
-
-local SliderTrack = Instance.new("Frame")
-SliderTrack.Size = UDim2.new(0.9, 0, 0.08, 0)
-SliderTrack.Position = UDim2.new(0.05, 0, 0.50, 0)
-SliderTrack.BackgroundColor3 = Color3.fromRGB(15, 12, 18)
-SliderTrack.Parent = LeftContainer
-
-local TrackCorner = Instance.new("UICorner")
-TrackCorner.CornerRadius = UDim.new(1, 0)
-TrackCorner.Parent = SliderTrack
-
-local SliderKnob = Instance.new("TextButton")
-SliderKnob.Size = UDim2.new(0, 22, 0, 22)
-SliderKnob.Position = UDim2.new(0, 0, 0.5, -11)
-SliderKnob.BackgroundColor3 = Themes[1].Primary
-SliderKnob.Text = ""
-SliderKnob.Parent = SliderTrack
-
-local KnobCorner = Instance.new("UICorner")
-KnobCorner.CornerRadius = UDim.new(1, 0)
-KnobCorner.Parent = SliderKnob
+StatusLabel.TextWrapped = true
+StatusLabel.Parent = MainFrame
 
 -- Bot Toggle Button
 local BotToggleBtn = Instance.new("TextButton")
-BotToggleBtn.Size = UDim2.new(0.9, 0, 0.20, 0)
-BotToggleBtn.Position = UDim2.new(0.05, 0, 0.68, 0)
-BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 35, 50)
-BotToggleBtn.Text = "BOT: OFF"
-BotToggleBtn.TextColor3 = Color3.fromRGB(160, 150, 170)
+BotToggleBtn.Size = UDim2.new(0.9, 0, 0, 30)
+BotToggleBtn.Position = UDim2.new(0.05, 0, 0.38, 0)
+BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+BotToggleBtn.Text = "BOT: ON"
+BotToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 BotToggleBtn.Font = Enum.Font.GothamBold
-BotToggleBtn.TextSize = 13
-BotToggleBtn.Parent = LeftContainer
+BotToggleBtn.TextSize = 12
+BotToggleBtn.Parent = MainFrame
 
-local BotToggleCorner = Instance.new("UICorner")
-BotToggleCorner.CornerRadius = UDim.new(0, 8)
-BotToggleCorner.Parent = BotToggleBtn
+local BotCorner = Instance.new("UICorner")
+BotCorner.CornerRadius = UDim.new(0, 6)
+BotCorner.Parent = BotToggleBtn
 
--- === RIGHT SIDE (MEMORY PANEL) ===
-local MemoryContainer = Instance.new("Frame")
-MemoryContainer.Size = UDim2.new(0.38, 0, 0.88, 0)
-MemoryContainer.Position = UDim2.new(0.59, 0, 0.06, 0)
-MemoryContainer.BackgroundColor3 = Color3.fromRGB(20, 16, 25)
-MemoryContainer.Parent = MainFrame
+-- Mode Swap Button
+local ModeBtn = Instance.new("TextButton")
+ModeBtn.Size = UDim2.new(0.9, 0, 0, 30)
+ModeBtn.Position = UDim2.new(0.05, 0, 0.56, 0)
+ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 50, 80)
+ModeBtn.Text = "Mode: OwO Mode"
+ModeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ModeBtn.Font = Enum.Font.GothamBold
+ModeBtn.TextSize = 12
+ModeBtn.Parent = MainFrame
 
-local MemCorner = Instance.new("UICorner")
-MemCorner.CornerRadius = UDim.new(0, 10)
-MemCorner.Parent = MemoryContainer
+local ModeCorner = Instance.new("UICorner")
+ModeCorner.CornerRadius = UDim.new(0, 6)
+ModeCorner.Parent = ModeBtn
 
-local MemTitle = Instance.new("TextLabel")
-MemTitle.Size = UDim2.new(0.9, 0, 0.12, 0)
-MemTitle.Position = UDim2.new(0.05, 0, 0.04, 0)
-MemTitle.Text = "🧠 PLAYER MEMORY"
-MemTitle.TextColor3 = Color3.fromRGB(200, 190, 215)
-MemTitle.BackgroundTransparency = 1
-MemTitle.Font = Enum.Font.GothamBold
-MemTitle.TextSize = 11
-MemTitle.Parent = MemoryContainer
+-- Stop Follow Button
+local StopFollowBtn = Instance.new("TextButton")
+StopFollowBtn.Size = UDim2.new(0.9, 0, 0, 30)
+StopFollowBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
+StopFollowBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
+StopFollowBtn.Text = "Stop Following"
+StopFollowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StopFollowBtn.Font = Enum.Font.GothamBold
+StopFollowBtn.TextSize = 12
+StopFollowBtn.Parent = MainFrame
 
-local NameInput = Instance.new("TextBox")
-NameInput.Size = UDim2.new(0.9, 0, 0.18, 0)
-NameInput.Position = UDim2.new(0.05, 0, 0.18, 0)
-NameInput.PlaceholderText = "Display/Username..."
-NameInput.Text = ""
-NameInput.BackgroundColor3 = Color3.fromRGB(12, 10, 15)
-NameInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-NameInput.Font = Enum.Font.Gotham
-NameInput.TextSize = 11
-NameInput.Parent = MemoryContainer
+local StopCorner = Instance.new("UICorner")
+StopCorner.CornerRadius = UDim.new(0, 6)
+StopCorner.Parent = StopFollowBtn
 
-local NameCorner = Instance.new("UICorner")
-NameCorner.CornerRadius = UDim.new(0, 6)
-NameCorner.Parent = NameInput
-
-local InfoInput = Instance.new("TextBox")
-InfoInput.Size = UDim2.new(0.9, 0, 0.34, 0)
-InfoInput.Position = UDim2.new(0.05, 0, 0.39, 0)
-InfoInput.PlaceholderText = "Add player facts/info..."
-InfoInput.Text = ""
-InfoInput.BackgroundColor3 = Color3.fromRGB(12, 10, 15)
-InfoInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-InfoInput.TextWrapped = true
-InfoInput.Font = Enum.Font.Gotham
-InfoInput.TextSize = 11
-InfoInput.TextYAlignment = Enum.TextYAlignment.Top
-InfoInput.Parent = MemoryContainer
-
-local InfoCorner = Instance.new("UICorner")
-InfoCorner.CornerRadius = UDim.new(0, 6)
-InfoCorner.Parent = InfoInput
-
-local SaveMemBtn = Instance.new("TextButton")
-SaveMemBtn.Size = UDim2.new(0.9, 0, 0.18, 0)
-SaveMemBtn.Position = UDim2.new(0.05, 0, 0.77, 0)
-SaveMemBtn.Text = "Save Memory"
-SaveMemBtn.BackgroundColor3 = Color3.fromRGB(50, 45, 65)
-SaveMemBtn.TextColor3 = Color3.fromRGB(220, 210, 235)
-SaveMemBtn.Font = Enum.Font.GothamBold
-SaveMemBtn.TextSize = 11
-SaveMemBtn.Parent = MemoryContainer
-
-local SaveCorner = Instance.new("UICorner")
-SaveCorner.CornerRadius = UDim.new(0, 6)
-SaveCorner.Parent = SaveMemBtn
-
-SaveMemBtn.MouseButton1Click:Connect(function()
-    local name = NameInput.Text:lower():gsub("%s+", "")
-    local info = InfoInput.Text
-    if name ~= "" and info ~= "" then
-        PlayerMemory[name] = info
-        SaveMemBtn.Text = "Saved!"
-        task.delay(1.5, function() SaveMemBtn.Text = "Save Memory" end)
-    end
+-- Button Event Listeners
+ToggleBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
 end)
 
--- Theme Switcher Function
-local function applyTheme(modeIndex)
-    local theme = Themes[modeIndex]
-    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    
-    local titleIcons = {[1] = "🌸 ", [2] = "🎒 ", [3] = "🔪 "}
-    TitleLabel.Text = titleIcons[modeIndex] .. "Silent AI (" .. theme.Name .. ")"
-
-    TweenService:Create(MainFrame, tweenInfo, {BackgroundColor3 = theme.Bg}):Play()
-    TweenService:Create(MainStroke, tweenInfo, {Color = theme.Primary}):Play()
-    TweenService:Create(TitleLabel, tweenInfo, {TextColor3 = theme.Primary}):Play()
-    TweenService:Create(SliderKnob, tweenInfo, {BackgroundColor3 = theme.Primary}):Play()
-end
-
--- Fixed Dragging Slider Logic
-local isDragging = false
-
-local function snapSlider(pct)
-    local targetMode = 1
-    local knobX = 0
-
-    if pct < 0.33 then
-        targetMode = 1
-        knobX = 0
-    elseif pct < 0.66 then
-        targetMode = 2
-        knobX = 0.5
+BotToggleBtn.MouseButton1Click:Connect(function()
+    botEnabled = not botEnabled
+    if botEnabled then
+        BotToggleBtn.Text = "BOT: ON"
+        BotToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+        StatusLabel.Text = "Status: ACTIVE\nListening..."
     else
-        targetMode = 3
-        knobX = 1
-    end
-
-    if currentMode ~= targetMode then
-        currentMode = targetMode
-        applyTheme(currentMode)
-    end
-
-    local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(SliderKnob, tweenInfo, {
-        Position = UDim2.new(knobX, knobX == 1 and -22 or (knobX == 0.5 and -11 or 0), 0.5, -11)
-    }):Play()
-end
-
-local function updateSlider(input)
-    local trackPos = SliderTrack.AbsolutePosition.X
-    local trackSize = SliderTrack.AbsoluteSize.X
-    local mousePos = input.Position.X
-    local relativeX = math.clamp(mousePos - trackPos, 0, trackSize)
-    snapSlider(relativeX / trackSize)
-end
-
-SliderTrack.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDragging = true
-        updateSlider(input)
+        BotToggleBtn.Text = "BOT: OFF"
+        BotToggleBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
+        StatusLabel.Text = "Status: INACTIVE"
     end
 end)
 
-SliderKnob.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDragging = true
-    end
+ModeBtn.MouseButton1Click:Connect(function()
+    currentModeIndex = (currentModeIndex % #Modes) + 1
+    ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
 end)
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isDragging = false
+-- Full Shutdown Helper
+local function destroyAllInstances()
+    botEnabled = false
+    if followConnection then
+        followConnection:Disconnect()
+        followConnection = nil
     end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        updateSlider(input)
+    for _, conn in ipairs(chatConnections) do
+        if conn then conn:Disconnect() end
     end
-end)
-
--- Helper: Find Player Mentions (by full/partial Username or Display Name)
-local function getMentionedPlayer(text)
-    local lowerText = text:lower()
-    for _, player in ipairs(Players:GetPlayers()) do
-        local uName = player.Name:lower()
-        local dName = player.DisplayName:lower()
-        
-        if lowerText:find(uName) or lowerText:find(dName) then
-            return player
+    chatConnections = {}
+    pcall(function()
+        for _, child in ipairs(PlayerGui:GetChildren()) do
+            if child.Name == "SilentAIBotNative" then
+                child:Destroy()
+            end
         end
-    end
-    return nil
+    end)
 end
 
--- Send Roblox Chat Message
-local function sendMessage(message)
-    if message == "" then return end
-    if isLegacyChat then
-        pcall(function() DefaultServerEvents.SayMessageRequest:FireServer(message, "All") end)
-    else
-        local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-        if channel then
-            pcall(function() channel:SendAsync(message) end)
-        else
-            pcall(function() LocalPlayer:Chat(message) end)
-        end
-    end
-end
+CloseBtn.MouseButton1Click:Connect(destroyAllInstances)
 
--- OpenRouter AI Request with Vision & Context Support
-local function queryAI(promptText, senderPlayer, targetPlayer, mode)
-    if not request or not isKeyValid then
-        return "B-Baka! AI Key missing... (⁠｡⁠･⁠ω⁠･⁠｡⁠)"
-    end
-
-    local cleanKey = OPENROUTER_API_KEY:gsub("%s+", "")
-    
-    -- Build Context Payload
-    local contextInfo = "Speaker: " .. senderPlayer.DisplayName .. " (@" .. senderPlayer.Name .. "). "
-    
-    -- Check Memory Bank for Speaker
-    local speakerKey = senderPlayer.DisplayName:lower():gsub("%s+", "")
-    if PlayerMemory[speakerKey] then
-        contextInfo = contextInfo .. "Speaker Info/Notes: " .. PlayerMemory[speakerKey] .. ". "
-    end
-
-    -- Check Mentions & Target Player
-    local imageUrl = nil
-    if targetPlayer then
-        contextInfo = contextInfo .. "Mentioned Player: " .. targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. "). "
-        local targetKey = targetPlayer.DisplayName:lower():gsub("%s+", "")
-        if PlayerMemory[targetKey] then
-            contextInfo = contextInfo .. "Mentioned Player Notes: " .. PlayerMemory[targetKey] .. ". "
-        end
-        
-        -- Generate Roblox Avatar Image URL
-        imageUrl = "https://rbxthumb.com/v1/avatar-headshot?userId=" .. targetPlayer.UserId .. "&width=150&height=150"
-    else
-        -- Default to speaker's avatar picture
-        imageUrl = "https://rbxthumb.com/v1/avatar-headshot?userId=" .. senderPlayer.UserId .. "&width=150&height=150"
-    end
-
-    -- Construct Vision & Text Message Object
-    local userMessageContent = {
-        { type = "text", text = "[Context: " .. contextInfo .. "] Message: " .. promptText }
-    }
-
-    if imageUrl then
-        table.insert(userMessageContent, {
-            type = "image_url",
-            image_url = { url = imageUrl }
-        })
-    end
+-- === AI API QUERY WITH STRICT SANITIZER ===
+local function queryAI(promptText, senderName)
+    if not request then return "Executor missing request API!" end
 
     local payload = HttpService:JSONEncode({
         model = "openrouter/free",
+        max_tokens = 40,
         messages = {
-            { role = "system", content = Themes[mode].SystemPrompt },
-            { role = "user", content = userMessageContent }
+            { role = "system", content = Modes[currentModeIndex].Prompt },
+            { role = "user", content = senderName .. ": " .. promptText }
         }
     })
 
@@ -401,91 +263,240 @@ local function queryAI(promptText, senderPlayer, targetPlayer, mode)
             Method = "POST",
             Headers = {
                 ["Content-Type"] = "application/json",
-                ["Authorization"] = "Bearer " .. cleanKey,
-                ["HTTP-Referer"] = "https://roblox.com",
-                ["X-Title"] = "Roblox Silent Bot"
+                ["Authorization"] = "Bearer " .. OPENROUTER_API_KEY:gsub("%s+", "")
             },
             Body = payload
         })
     end)
 
-    if success and response and response.StatusCode == 200 then
+    if success and response and response.Body then
         local dataSuccess, data = pcall(function() return HttpService:JSONDecode(response.Body) end)
-        if dataSuccess and data and data.choices and data.choices[1] then
-            return data.choices[1].message.content:gsub('^"', ''):gsub('"$', '')
+        if dataSuccess and data and data.choices and data.choices[1] and data.choices[1].message then
+            local rawContent = data.choices[1].message.content
+            if type(rawContent) == "string" and rawContent ~= "" then
+                -- STRIP ALL COGNITIVE / SYSTEM MONOLOGUE (DeepSeek <think> blocks, Markdown, Quotes)
+                rawContent = rawContent:gsub("<think>.-</think>", "")
+                rawContent = rawContent:gsub("%b[]", "")
+                rawContent = rawContent:gsub('^"', ''):gsub('"$', '')
+                rawContent = rawContent:gsub("^%s*(.-)%s*$", "%1")
+                return rawContent
+            end
         end
     end
 
-    return "Ah... something went wrong processing that request ♡"
+    return "B-Baka! AI timed out... ♡"
 end
 
--- Central Chat Handler
-local function handleIncomingChat(senderPlayer, messageText)
-    if not botEnabled or isProcessing then return end
-    
+-- === NAVIGATION CONTROLS ===
+local function startFollowing(player)
+    targetFollowPlayer = player
+    if followConnection then followConnection:Disconnect() end
+
+    followConnection = RunService.Heartbeat:Connect(function()
+        if not targetFollowPlayer or not targetFollowPlayer.Character then return end
+        local myChar = LocalPlayer.Character
+        local targetChar = targetFollowPlayer.Character
+
+        if myChar and targetChar then
+            local humanoid = myChar:FindFirstChildOfClass("Humanoid")
+            local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+            local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+
+            if humanoid and targetHRP and myHRP then
+                if (myHRP.Position - targetHRP.Position).Magnitude > 7 then
+                    humanoid:MoveTo(targetHRP.Position)
+                end
+            end
+        end
+    end)
+end
+
+local function stopFollowing()
+    targetFollowPlayer = nil
+    if followConnection then
+        followConnection:Disconnect()
+        followConnection = nil
+    end
+end
+
+StopFollowBtn.MouseButton1Click:Connect(function()
+    stopFollowing()
+    sendMessage("Stopped following! ♡")
+end)
+
+-- === FRONT PLAYER DETECTION ===
+local function getPlayerInFront()
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+
+    local myHRP = myChar.HumanoidRootPart
+    local closestPlayer = nil
+    local shortestDist = 15
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local targetHRP = p.Character.HumanoidRootPart
+            local dirToTarget = (targetHRP.Position - myHRP.Position)
+            local dist = dirToTarget.Magnitude
+
+            if dist < shortestDist then
+                local dot = myHRP.CFrame.LookVector:Dot(dirToTarget.Unit)
+                if dot > 0.5 then
+                    shortestDist = dist
+                    closestPlayer = p
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- === TARGET SEARCH ===
+local function findPlayerByName(nameQuery)
+    local query = nameQuery:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(query) or p.DisplayName:lower():find(query) then
+            return p
+        end
+    end
+    return nil
+end
+
+-- === MESSAGE PROCESSOR ===
+local function processIncomingMessage(player, messageText)
     local lowerMsg = messageText:lower()
-    local trigger = "hey silent"
-    
-    if lowerMsg:find(trigger) then
+    local senderName = player.DisplayName or player.Name
+
+    -- Direct Chat Commands ($prefix)
+    if lowerMsg:find("%$stop") then
+        stopFollowing()
+        sendMessage("Stopped following! ♡")
+        return
+    elseif lowerMsg:find("%$follow") then
+        startFollowing(player)
+        sendMessage("Following " .. senderName .. "! ♡")
+        return
+    elseif lowerMsg:find("%$owo") then
+        currentModeIndex = 1
+        ModeBtn.Text = "Mode: OwO Mode"
+        sendMessage("Switched to OwO mode! >w<")
+        return
+    elseif lowerMsg:find("%$tsundere") then
+        currentModeIndex = 2
+        ModeBtn.Text = "Mode: Tsundere Mode"
+        sendMessage("B-Baka! Switched to Tsundere mode!")
+        return
+    elseif lowerMsg:find("%$yandere") then
+        currentModeIndex = 3
+        ModeBtn.Text = "Mode: Yandere Mode"
+        sendMessage("Switched to Yandere mode... ♡")
+        return
+    elseif lowerMsg:find("%$mode") then
+        currentModeIndex = (currentModeIndex % #Modes) + 1
+        ModeBtn.Text = "Mode: " .. Modes[currentModeIndex].Name
+        sendMessage("Mode set to: " .. Modes[currentModeIndex].Name .. "! ♡")
+        return
+    elseif lowerMsg:find("%$goto%s+(%w+)") or lowerMsg:find("%$go to%s+(%w+)") then
+        local targetName = lowerMsg:match("%$goto%s+(%w+)") or lowerMsg:match("%$go to%s+(%w+)")
+        if targetName then
+            local foundPlayer = findPlayerByName(targetName)
+            if foundPlayer then
+                sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡")
+                startFollowing(foundPlayer)
+            else
+                sendMessage("I couldn't find anyone named " .. targetName .. "!")
+            end
+            return
+        end
+    end
+
+    if not botEnabled then return end
+    if player == LocalPlayer then return end
+
+    local isTriggered = lowerMsg:find("hey silent") or lowerMsg:find("silent")
+    local isContinuous = continuousTalk and (lastActiveUser == player) and (tick() - lastActiveTime < 25)
+
+    if isTriggered or isContinuous then
+        -- Multi-user busy detection
+        if isProcessing then
+            sendMessage(Modes[currentModeIndex].ThinkingMsg)
+            return
+        end
+
+        lastActiveUser = player
+        lastActiveTime = tick()
+
+        -- GOTO TARGET (Natural Language)
+        if lowerMsg:find("goto") or lowerMsg:find("go to") then
+            local targetName = lowerMsg:match("goto%s+(%w+)") or lowerMsg:match("go to%s+(%w+)")
+            if targetName then
+                local foundPlayer = findPlayerByName(targetName)
+                if foundPlayer then
+                    sendMessage("Moving over to " .. (foundPlayer.DisplayName or foundPlayer.Name) .. "! ♡")
+                    startFollowing(foundPlayer)
+                    return
+                else
+                    sendMessage("I couldn't find anyone named " .. targetName .. "!")
+                    return
+                end
+            end
+        end
+
+        -- FOLLOW / STOP (Natural Language)
+        if lowerMsg:find("follow me") or lowerMsg:find("come here") or (lowerMsg:find("follow") and not lowerMsg:find("stop")) then
+            sendMessage("Coming to you, " .. senderName .. "! ♡")
+            startFollowing(player)
+            return
+        elseif lowerMsg:find("stop follow") or lowerMsg:find("stop") or lowerMsg:find("stay") then
+            stopFollowing()
+            sendMessage("Stopped following! ♡")
+            return
+        end
+
+        -- FRONT PLAYER CONTEXT EVALUATION
+        local processedPrompt = messageText
+        if lowerMsg:find("person in front") or lowerMsg:find("person infront") or lowerMsg:find("guy in front") then
+            local frontPlayer = getPlayerInFront()
+            if frontPlayer then
+                local pName = frontPlayer.DisplayName or frontPlayer.Name
+                processedPrompt = processedPrompt .. " (Context: The player standing directly in front of you is named " .. pName .. ")"
+            else
+                processedPrompt = processedPrompt .. " (Context: No player is standing directly in front of you)"
+            end
+        end
+
         isProcessing = true
-        StatusLabel.Text = "Status: Reading & Thinking..."
-        
-        local _, endIndex = lowerMsg:find(trigger)
-        local userQuery = messageText:sub(endIndex + 1):gsub("^%s+", "")
-        if userQuery == "" then userQuery = "Hello!" end
-        
-        -- Detect Player Mention
-        local targetPlayer = getMentionedPlayer(userQuery)
+        StatusLabel.Text = "Status: Replying to " .. senderName .. "..."
 
         task.spawn(function()
-            local aiResponse = queryAI(userQuery, senderPlayer, targetPlayer, currentMode)
-            sendMessage(aiResponse)
-            StatusLabel.Text = "Listening for: 'hey silent...'"
+            local cleanPrompt = processedPrompt:gsub("hey silent", ""):gsub("silent", "")
+            local reply = queryAI(cleanPrompt, senderName)
+            if reply and reply ~= "" then sendMessage(reply) end
+            StatusLabel.Text = "Status: ACTIVE\nListening..."
             isProcessing = false
         end)
     end
 end
 
--- Chat Listeners Hook
-if isLegacyChat then
-    local function hookPlayer(player)
-        player.Chatted:Connect(function(msg)
-            handleIncomingChat(player, msg)
+-- === CHAT HOOKS ===
+pcall(function()
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local c = TextChatService.MessageReceived:Connect(function(textChatMessage)
+            if textChatMessage and textChatMessage.TextSource then
+                local player = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
+                if player then processIncomingMessage(player, textChatMessage.Text) end
+            end
         end)
-    end
-    Players.PlayerAdded:Connect(hookPlayer)
-    for _, player in ipairs(Players:GetPlayers()) do hookPlayer(player) end
-else
-    local function connectChannel(channel)
-        if channel:IsA("TextChannel") then
-            channel.MessageReceived:Connect(function(textChatMessage)
-                if textChatMessage.TextSource then
-                    local senderPlayer = Players:GetPlayerByUserId(textChatMessage.TextSource.UserId)
-                    if senderPlayer then
-                        handleIncomingChat(senderPlayer, textChatMessage.Text)
-                    end
-                end
-            end)
-        end
-    end
-
-    local TextChannels = TextChatService:WaitForChild("TextChannels", 5)
-    if TextChannels then
-        for _, channel in ipairs(TextChannels:GetChildren()) do connectChannel(channel) end
-        TextChannels.ChildAdded:Connect(connectChannel)
-    end
-end
-
--- Toggle Handler
-BotToggleBtn.MouseButton1Click:Connect(function()
-    botEnabled = not botEnabled
-    local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    
-    if botEnabled then
-        BotToggleBtn.Text = "BOT: ACTIVE"
-        TweenService:Create(BotToggleBtn, tweenInfo, {BackgroundColor3 = Color3.fromRGB(40, 190, 110), TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+        table.insert(chatConnections, c)
     else
-        BotToggleBtn.Text = "BOT: OFF"
-        TweenService:Create(BotToggleBtn, tweenInfo, {BackgroundColor3 = Color3.fromRGB(40, 35, 50), TextColor3 = Color3.fromRGB(160, 150, 170)}):Play()
+        for _, p in ipairs(Players:GetPlayers()) do
+            local c = p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+            table.insert(chatConnections, c)
+        end
+        local c2 = Players.PlayerAdded:Connect(function(p)
+            local c = p.Chatted:Connect(function(msg) processIncomingMessage(p, msg) end)
+            table.insert(chatConnections, c)
+        end)
+        table.insert(chatConnections, c2)
     end
 end)
