@@ -48,7 +48,7 @@ local currentPathId = 0 -- Mutex for pathfinding threads
 local currentAnimationTrack = nil
 local pathFolder = nil
 
-local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 12 words. Do not output thinking, reasoning, or meta remarks. Keep under 200 characters."
+local STRICT_RULE = " Respond ONLY with spoken in-character dialogue. Maximum 12 words. Do not output thinking, reasoning, or meta remarks. Keep under 200 characters. I will provide an example for each one, base your wording and structure based off each. Instead of saying, I have been told to write in a OwO/Tsundere/Yandere format, heres my go! I-I am a good doggy.!/S-stop looking at me like that.! B-Baka!/I will tell you when you can leave. You cannot leave me.   Instead of saying all of that, just say what the character would say, so if i say, Hey silent are you a good person?    you would respond with Yes in according to your style. If you cannot fufill the request then RESPOND ONLY WITH Come again?"
 
 local currentModeIndex = 1
 local Modes = {
@@ -96,7 +96,7 @@ Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 16)
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 30)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 30, 50)
-TitleLabel.Text = "   🌸 Silent AI (Smart Bot)"
+TitleLabel.Text = "   🌸 Silent AI"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 180, 220)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
