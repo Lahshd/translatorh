@@ -3,11 +3,11 @@
 yeah its an AI alright, dont tesh me
 
 BEST PAIRED WITH:
-**SilentStands** - coming out soon
+**SilentStands** - OUT NOW
 **The Stand Society** - made by Flow, best option so far, contains a gui and shit. (unforunatly **delta** does not support webhooking)
 
 LINKS
-**SilentStands** - watch my github 👀
+**SilentStands** - OUT NOW, included in script. 
 **The Stand Society** - https://discord.gg/Aknd49ARke <<< get the script here for their stand.
 
 # VERY BIG DISCLAMER.
