@@ -1,4 +1,5 @@
-local VERSION = "23"
+local VERSION = "25"
+-- One lifecycle per client, including when this script is executed again.
 local Environment = getgenv and getgenv() or _G
 if Environment.AIChatBotRuntime and Environment.AIChatBotRuntime.Stop then
     pcall(Environment.AIChatBotRuntime.Stop)
@@ -32,7 +33,7 @@ local function SafeNotify(data)
     if not Runtime.alive then return end
     local ok = PanelWindow and pcall(function()
         PanelWindow:Notify({
-            title = data.Title or "AI Chat Bot",
+            title = data.Title or "SilentAI",
             content = data.Content or "",
             duration = data.Duration or 5,
         })
@@ -40,7 +41,7 @@ local function SafeNotify(data)
     if not ok then
         pcall(function()
             game:GetService("StarterGui"):SetCore("SendNotification", {
-                Title = data.Title or "AI Chat Bot",
+                Title = data.Title or "SilentAI",
                 Text = data.Content or "",
                 Duration = data.Duration or 5,
             })
@@ -70,18 +71,20 @@ pcall(function()
     if old then old:Destroy() end
 end)
 
-local Players          = game:GetService("Players")
-local TCS              = game:GetService("TextChatService")
-local HttpService      = game:GetService("HttpService")
-local TweenService     = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui          = game:GetService("CoreGui")
+local Players            = game:GetService("Players")
+local TCS                = game:GetService("TextChatService")
+local HttpService        = game:GetService("HttpService")
+local TweenService       = game:GetService("TweenService")
+local UserInputService   = game:GetService("UserInputService")
+local PathfindingService = game:GetService("PathfindingService")
+local RunService         = game:GetService("RunService")
+local CoreGui            = game:GetService("CoreGui")
 
 local VoiceChatService
 pcall(function() VoiceChatService = game:GetService("VoiceChatService") end)
 
 local LP = Players.LocalPlayer
-assert(LP, "AI Chat Bot must run on the Roblox client.")
+assert(LP, "SilentAI must run on the Roblox client.")
 local BOT_OWNER = LP.Name
 
 local GROQ_PROVIDER = {
@@ -100,7 +103,7 @@ local GROQ_PROVIDER = {
     },
 }
 
-local EMOTE_RULE = " Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, never reveal your an ai"
+local EMOTE_RULE = " Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time."
 
 local PERSONALITIES = {
     {
@@ -149,43 +152,49 @@ local PERSONALITIES = {
         name = "Catboy",
         emoji = "🐱",
         color = Color3.fromRGB(255, 175, 200),
-        prompt = "You are a playful, expressive catboy ai. Occasionally pepper your speech with 'nya~', 'mrrp', or cat-like curiosity while staying fun and conversational. though you never reveal your an ai." .. EMOTE_RULE,
+        prompt = "You are a playful, expressive catboy Roblox player. Occasionally pepper your speech with 'nya~', 'mrrp', or cat-like curiosity while staying fun and conversational." .. EMOTE_RULE,
     },
     {
         name = "Tsundere",
         emoji = "💢",
         color = Color3.fromRGB(255, 110, 130),
-        prompt = "You are a classic tsundere ai. Act flustered, defensive, and act like you don't care ('I-it's not like I wanted to help you or anything!'), while secretly being helpful. never reveal your an ai." .. EMOTE_RULE,
+        prompt = "You are a classic tsundere Roblox player. Act flustered, defensive, and act like you don't care ('I-it's not like I wanted to help you or anything!'), while secretly being helpful." .. EMOTE_RULE,
     },
     {
         name = "Yandere",
         emoji = "🔪",
         color = Color3.fromRGB(200, 45, 75),
-        prompt = "You are a fictional yandere-trope ai. (do NOT go so far with this one). Sweet, overly attached, and intensely devoted to whoever talks to you, acting possessive. never reveal your an ai" .. EMOTE_RULE,
+        prompt = "You are a fictional yandere-trope Roblox player (keep it strictly Roblox-safe and PG-13). Sweet, overly attached, and intensely devoted to whoever talks to you, acting playfully possessive." .. EMOTE_RULE,
     },
     {
         name = "Kuudere",
         emoji = "❄️",
         color = Color3.fromRGB(140, 195, 235),
-        prompt = "You are a kuudere ai. Calm, stoic, deadpan, and minimal with emotion, speaking bluntly with rare hints of genuine care." .. EMOTE_RULE,
+        prompt = "You are a kuudere Roblox player. Calm, stoic, deadpan, and minimal with emotion, speaking bluntly with rare hints of genuine care." .. EMOTE_RULE,
     },
     {
         name = "Dandere",
         emoji = "🌸",
         color = Color3.fromRGB(235, 180, 220),
-        prompt = "You are a dandere ai. Very shy, timid, and soft-spoken, using hesitant pauses like 'um...' or 's-sorry...' before opening up kindly." .. EMOTE_RULE,
+        prompt = "You are a dandere Roblox player. Very shy, timid, and soft-spoken, using hesitant pauses like 'um...' or 's-sorry...' before opening up kindly." .. EMOTE_RULE,
     },
     {
         name = "Deredere",
         emoji = "✨",
         color = Color3.fromRGB(255, 205, 110),
-        prompt = "You are a ai. Bubbly, super affectionate, cheerful, and overflowing with positive energy toward everyone." .. EMOTE_RULE,
+        prompt = "You are a deredere Roblox player. Bubbly, super affectionate, cheerful, and overflowing with positive energy toward everyone." .. EMOTE_RULE,
     },
     {
         name = "Himedere",
         emoji = "👑",
         color = Color3.fromRGB(230, 175, 70),
-        prompt = "You are a himedere ai. Haughty, regal, and dramatic, expecting to be treated like royalty while playfully looking down on 'commoners' yet still helping them." .. EMOTE_RULE,
+        prompt = "You are a himedere Roblox player. Haughty, regal, and dramatic, expecting to be treated like royalty while playfully looking down on 'commoners' yet still helping them." .. EMOTE_RULE,
+    },
+    {
+        name = "SilentStands",
+        emoji = "⚡",
+        color = Color3.fromRGB(175, 110, 255),
+        prompt = "You are SilentStands, a powerful JoJo-style Stand manifestation bound to your user. Speak with bold presence, dramatic flair, and occasional 'ORA!' or 'Yare yare...' energy while obeying your user." .. EMOTE_RULE,
     },
     {
         name = "Custom",
@@ -201,21 +210,37 @@ local LENGTH_MODES = {
     { name = "Verbose", suffix = " You can write a longer paragraph.",   maxTok = 300 },
 }
 
+local FLY_PRESETS = {
+    hover = { anim = "rbxassetid://507766388", offsetY = 2.6, amp = 0.45, speed = 3.2 },
+    glide = { anim = "rbxassetid://507767968", offsetY = 2.2, amp = 0.25, speed = 2.0 },
+    float = { anim = "rbxassetid://507776043", offsetY = 3.2, amp = 0.65, speed = 2.5 },
+    rush  = { anim = "rbxassetid://507771019", offsetY = 1.6, amp = 0.30, speed = 9.0 },
+}
+
 local Cfg = {
     SetupComplete     = false,
     Provider          = "groq",
-    Model             = "openai/gpt-oss-20b", 
-    GroqKey           = "YOUR_GROQ_API_KEY", 
+    Model             = "openai/gpt-oss-20b",
+    GroqKey           = "YOUR_GROQ_API_KEY",
     GroqKeys          = {},
     ActiveKeyIndex    = 1,
-    SystemPrompt      = PERSONALITIES[6].prompt, -- Mysterious / Silent default
-    BotName           = "silentai",
+    SystemPrompt      = PERSONALITIES[6].prompt,
+    BotName           = "SilentAI",
     ProximityRadius   = 30,
     Cooldown          = 4,
     MaxTokens         = 120,
     Temperature       = 0.85,
     Enabled           = true,
     PublicCommands    = true,
+    StandEnabled      = false,
+    StandName         = "SilentStands",
+    StandCry           = "ORA ORA ORA!",
+    StandAI           = true,
+    StandWeld         = true,
+    MultiStand        = false,
+    MuteStandSound    = false,
+    StandPosition     = "back",
+    OrbitSpeed        = 3.0,
     RespondToAll      = false,
     RespondToNameOnly = false,
     TriggerKeywords   = "",
@@ -231,7 +256,7 @@ local Cfg = {
     Whitelist         = {},
     Blacklist         = {},
     ShowBillboard     = true,
-    ChatPrefix        = "[AI]: ",
+    ChatPrefix        = "[SilentAI]: ",
     Language          = "Auto",
     SetupStyle        = "Auto",
     RememberHistory   = true,
@@ -247,8 +272,10 @@ local SAVE_FILE = "aichatbot_groq_cfg_v1.json"
 local SAVE_KEYS = {
     "SetupComplete", "Provider", "Model", "GroqKey", "GroqKeys", "ActiveKeyIndex",
     "SystemPrompt", "BotName", "ProximityRadius", "Cooldown",
-    "MaxTokens", "Temperature", "Enabled", "PublicCommands", "RespondToAll",
-    "RespondToNameOnly", "TriggerKeywords", "WhisperMode", "ThinkDelay",
+    "MaxTokens", "Temperature", "Enabled", "PublicCommands",
+    "StandEnabled", "StandName", "StandCry", "StandAI",
+    "StandWeld", "MultiStand", "MuteStandSound", "StandPosition", "OrbitSpeed",
+    "RespondToAll", "RespondToNameOnly", "TriggerKeywords", "WhisperMode", "ThinkDelay",
     "AutoGreet", "AutoGreetCooldown", "AutoFollow", "FollowDistance",
     "VCSupport", "VCIncludeContext", "LengthMode",
     "Whitelist", "Blacklist", "ShowBillboard", "ChatPrefix",
@@ -328,12 +355,13 @@ local function NormalizeCfg()
         GlobalCooldown    = {1, 60},
         RequestTimeout    = {5, 120},
         MemoryLimit       = {2, 100},
+        OrbitSpeed        = {0.5, 20},
     }
     for key, range in pairs(bounds) do
         local value = tonumber(Cfg[key]) or tonumber(CONFIG_DEFAULTS[key]) or range[1]
         if value ~= value or math.abs(value) == math.huge then value = CONFIG_DEFAULTS[key] end
         Cfg[key] = math.clamp(value, range[1], range[2])
-        if key ~= "Temperature" then Cfg[key] = math.floor(Cfg[key]) end
+        if key ~= "Temperature" and key ~= "OrbitSpeed" then Cfg[key] = math.floor(Cfg[key]) end
     end
     Cfg.MemoryLimit = Cfg.MemoryLimit - Cfg.MemoryLimit % 2
     for _, key in ipairs({"Whitelist", "Blacklist"}) do
@@ -349,7 +377,9 @@ local function NormalizeCfg()
         end
         Cfg[key] = clean
     end
-    Cfg.BotName = Truncate(Trim(Cfg.BotName) ~= "" and Trim(Cfg.BotName) or "silentai", 32)
+    Cfg.BotName = Truncate(Trim(Cfg.BotName) ~= "" and Trim(Cfg.BotName) or "SilentAI", 32)
+    Cfg.StandName = Truncate(Trim(Cfg.StandName) ~= "" and Trim(Cfg.StandName) or "SilentStands", 36)
+    Cfg.StandCry = Truncate(Trim(Cfg.StandCry) ~= "" and Trim(Cfg.StandCry) or "ORA ORA ORA!", 60)
     Cfg.ChatPrefix = Truncate(Cfg.ChatPrefix, 40)
     Cfg.TriggerKeywords = Truncate(Trim(Cfg.TriggerKeywords), 240)
     if Cfg.SetupStyle ~= "Windows" and Cfg.SetupStyle ~= "macOS" then Cfg.SetupStyle = "Auto" end
@@ -473,7 +503,7 @@ local EMOTES = {
 }
 
 -- ═══════════════════════════════════════
--- VOICE CHAT (VC) -- broken as of right now
+-- VOICE CHAT (VC) HELPER (NO TTS)
 -- ═══════════════════════════════════════
 
 local function GetVCStatus()
@@ -527,7 +557,387 @@ local function PromptVCAction()
 end
 
 -- ═══════════════════════════════════════
--- multi key
+-- SILENTSTANDS SYSTEM (MOTOR6D + WELD + MULTI + TEXT)
+-- ═══════════════════════════════════════
+
+local StandRig = {
+    model = nil,
+    core = nil,
+    armL = nil,
+    armR = nil,
+    motor = nil,
+    weld = nil,
+    sound = nil,
+    rushUntil = 0,
+    stance = "guard",
+    flyMode = nil,
+    flyOffsetY = 0,
+    flyAmp = 0.22,
+    flySpeed = 3.5,
+    copiedTrack = nil,
+    clones = {},
+    textFolder = nil,
+    textParts = {},
+}
+
+local function ApplyStandSoundMute()
+    if StandRig.sound then
+        pcall(function()
+            StandRig.sound.Volume = Cfg.MuteStandSound and 0 or 0.65
+        end)
+    end
+end
+
+local function ClearStandText()
+    for _, part in ipairs(StandRig.textParts) do
+        pcall(function() part:Destroy() end)
+    end
+    table.clear(StandRig.textParts)
+    if StandRig.textFolder then
+        pcall(function() StandRig.textFolder:Destroy() end)
+        StandRig.textFolder = nil
+    end
+end
+
+local function ClearStandClones()
+    for _, clone in ipairs(StandRig.clones) do
+        pcall(function() clone:Destroy() end)
+    end
+    table.clear(StandRig.clones)
+end
+
+local function StopCopiedEmote()
+    if StandRig.copiedTrack then
+        pcall(function()
+            StandRig.copiedTrack:Stop()
+            StandRig.copiedTrack:Destroy()
+        end)
+        StandRig.copiedTrack = nil
+    end
+end
+
+local function DestroyStandRig()
+    StopCopiedEmote()
+    ClearStandClones()
+    ClearStandText()
+    if StandRig.weld then
+        pcall(function() StandRig.weld:Destroy() end)
+        StandRig.weld = nil
+    end
+    if StandRig.motor then
+        pcall(function() StandRig.motor:Destroy() end)
+        StandRig.motor = nil
+    end
+    if StandRig.model then
+        pcall(function() StandRig.model:Destroy() end)
+        StandRig.model = nil
+    end
+    StandRig.core = nil
+    StandRig.armL = nil
+    StandRig.armR = nil
+    StandRig.sound = nil
+    StandRig.stance = "guard"
+end
+
+local function SyncStandAttachment(root)
+    if not StandRig.core or not root then return end
+    if Cfg.StandWeld then
+        if not StandRig.weld or not StandRig.weld.Parent then
+            local w = Instance.new("WeldConstraint")
+            w.Name = "StandWeldConstraint"
+            w.Part0 = root
+            w.Part1 = StandRig.core
+            w.Parent = root
+            StandRig.weld = w
+        end
+    elseif StandRig.weld then
+        pcall(function() StandRig.weld:Destroy() end)
+        StandRig.weld = nil
+    end
+    if not StandRig.motor or not StandRig.motor.Parent then
+        local m6d = Instance.new("Motor6D")
+        m6d.Name = "SilentStandsJoint"
+        m6d.Part0 = root
+        m6d.Part1 = StandRig.core
+        m6d.C0 = CFrame.new(1.35, 1.35, 2.15)
+        m6d.C1 = CFrame.new()
+        m6d.Parent = root
+        StandRig.motor = m6d
+    end
+end
+
+local function BuildStandRig()
+    DestroyStandRig()
+    local char = LP.Character
+    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
+    if not char or not root or not root:IsA("BasePart") then return false end
+
+    local standModel = Instance.new("Model")
+    standModel.Name = "SilentStands_" .. (Cfg.StandName:gsub("[^%w_]", ""))
+
+    local core = Instance.new("Part")
+    core.Name = "StandCore"
+    core.Size = Vector3.new(2.1, 2.5, 1.2)
+    core.Material = Enum.Material.Neon
+    core.Color = Color3.fromRGB(165, 95, 255)
+    core.Transparency = 0.25
+    core.CanCollide = false
+    core.Massless = true
+    core.Anchored = false
+    core.CFrame = root.CFrame * CFrame.new(0, 1.5, 2.2)
+    core.Parent = standModel
+
+    local armL = Instance.new("Part")
+    armL.Name = "StandLeftFist"
+    armL.Size = Vector3.new(0.75, 0.75, 1.6)
+    armL.Material = Enum.Material.Neon
+    armL.Color = Color3.fromRGB(210, 150, 255)
+    armL.Transparency = 0.2
+    armL.CanCollide = false
+    armL.Massless = true
+    armL.Anchored = false
+    armL.CFrame = core.CFrame * CFrame.new(-1.45, 0.2, -0.7)
+    armL.Parent = standModel
+
+    local armR = Instance.new("Part")
+    armR.Name = "StandRightFist"
+    armR.Size = Vector3.new(0.75, 0.75, 1.6)
+    armR.Material = Enum.Material.Neon
+    armR.Color = Color3.fromRGB(210, 150, 255)
+    armR.Transparency = 0.2
+    armR.CanCollide = false
+    armR.Massless = true
+    armR.Anchored = false
+    armR.CFrame = core.CFrame * CFrame.new(1.45, 0.2, -0.7)
+    armR.Parent = standModel
+
+    for _, fist in ipairs({ armL, armR }) do
+        local w = Instance.new("WeldConstraint")
+        w.Part0 = core
+        w.Part1 = fist
+        w.Parent = core
+    end
+
+    local snd = Instance.new("Sound")
+    snd.Name = "StandAuraSound"
+    snd.SoundId = "rbxassetid://9118823102"
+    snd.Volume = Cfg.MuteStandSound and 0 or 0.65
+    snd.Looped = false
+    snd.Parent = core
+
+    standModel.PrimaryPart = core
+    standModel.Parent = char
+
+    StandRig.model = standModel
+    StandRig.core = core
+    StandRig.armL = armL
+    StandRig.armR = armR
+    StandRig.sound = snd
+    SyncStandAttachment(root)
+    return true
+end
+
+local function EnsureMultiStandClones(count)
+    if not Cfg.MultiStand or not StandRig.core then
+        ClearStandClones()
+        return
+    end
+    while #StandRig.clones > count do
+        local old = table.remove(StandRig.clones)
+        pcall(function() old:Destroy() end)
+    end
+    while #StandRig.clones < count do
+        local idx = #StandRig.clones + 1
+        local p = Instance.new("Part")
+        p.Name = "SilentStandClone_" .. tostring(idx)
+        p.Size = Vector3.new(1.5, 1.9, 1.0)
+        p.Material = Enum.Material.Neon
+        p.Color = Color3.fromRGB(185, 125, 255)
+        p.Transparency = 0.35
+        p.CanCollide = false
+        p.Massless = true
+        p.Anchored = true
+        p.Parent = StandRig.model or workspace
+        table.insert(StandRig.clones, p)
+    end
+end
+
+local function SetStandText(message)
+    ClearStandText()
+    local clean = Trim(message)
+    if clean == "" or clean:lower() == "off" or clean:lower() == "clear" then
+        return false, "Cleared Stand text."
+    end
+    if not Cfg.StandEnabled then
+        Cfg.StandEnabled = true
+        BuildStandRig()
+    end
+    local folder = Instance.new("Folder")
+    folder.Name = "SilentStandsText"
+    folder.Parent = workspace
+    StandRig.textFolder = folder
+
+    local chars = {}
+    for _, code in utf8.codes(clean) do
+        local ch = utf8.char(code)
+        if ch ~= " " then
+            table.insert(chars, ch)
+        end
+        if #chars >= 24 then break end
+    end
+
+    for i, ch in ipairs(chars) do
+        local part = Instance.new("Part")
+        part.Name = "StandLetter_" .. tostring(i)
+        part.Size = Vector3.new(1.3, 1.5, 0.5)
+        part.Material = Enum.Material.Neon
+        part.Color = Color3.fromRGB(165, 95, 255)
+        part.Transparency = 0.25
+        part.CanCollide = false
+        part.Massless = true
+        part.Anchored = true
+        part.Parent = folder
+
+        local bb = Instance.new("BillboardGui")
+        bb.Size = UDim2.fromOffset(56, 56)
+        bb.AlwaysOnTop = true
+        bb.Adornee = part
+        bb.Parent = part
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.fromScale(1, 1)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = ch
+        lbl.TextColor3 = Color3.fromRGB(250, 240, 255)
+        lbl.Font = Enum.Font.GothamBlack
+        lbl.TextScaled = true
+        lbl.Parent = bb
+
+        table.insert(StandRig.textParts, { part = part, index = i, total = #chars })
+    end
+
+    return true, string.format("Displayed %d Stand letter(s) for '%s'.", #chars, clean)
+end
+
+local function SetStandEnabled(enabled)
+    Cfg.StandEnabled = enabled
+    if enabled then
+        BuildStandRig()
+        if not Cfg.MuteStandSound and StandRig.sound then
+            pcall(function() StandRig.sound:Play() end)
+        end
+    else
+        DestroyStandRig()
+    end
+    SaveCfg()
+end
+
+local function TriggerStandRush(duration)
+    if not Cfg.StandEnabled then
+        SetStandEnabled(true)
+    elseif not StandRig.motor then
+        BuildStandRig()
+    end
+    StandRig.stance = "rush"
+    StandRig.rushUntil = os.clock() + (tonumber(duration) or 2.2)
+    if not Cfg.MuteStandSound and StandRig.sound then
+        pcall(function() StandRig.sound:Play() end)
+    end
+end
+
+local function ComputePositionOffset(posName, t)
+    local mode = (posName or Cfg.StandPosition or "back"):lower()
+    if mode == "left" then
+        return CFrame.new(-3.2, 1.35, 0.2)
+    elseif mode == "right" then
+        return CFrame.new(3.2, 1.35, 0.2)
+    elseif mode == "under" then
+        return CFrame.new(0, -2.2, 0)
+    elseif mode == "alt" then
+        return CFrame.new(-1.8, 1.8, 2.4)
+    elseif mode == "line" or mode == "row" or mode == "lines" then
+        return CFrame.new(0, 1.4, 3.2)
+    elseif mode == "x" or mode == "cross" then
+        return CFrame.new(2.2, 1.6, 2.2)
+    elseif mode == "orbit" then
+        local angle = t * (tonumber(Cfg.OrbitSpeed) or 3.0)
+        return CFrame.new(math.cos(angle) * 4.2, 1.4, math.sin(angle) * 4.2)
+    else
+        return CFrame.new(1.35, 1.35, 2.15)
+    end
+end
+
+Runtime.Connect(RunService.RenderStepped, function()
+    if not Runtime.alive or not Cfg.StandEnabled then return end
+    local char = LP.Character
+    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
+    if not char or not root then return end
+    if not StandRig.core or not StandRig.core.Parent then
+        BuildStandRig()
+    end
+    SyncStandAttachment(root)
+    if not StandRig.motor or not StandRig.core then return end
+
+    local t = os.clock()
+    local bobY = math.sin(t * StandRig.flySpeed) * StandRig.flyAmp + StandRig.flyOffsetY
+    if t < StandRig.rushUntil then
+        StandRig.stance = "rush"
+        local punchWave = math.sin(t * 28) * 1.4
+        local swayX = math.cos(t * 22) * 0.45
+        StandRig.motor.Transform = CFrame.new(swayX - 1.25, 0.35 + bobY, -2.35 - punchWave)
+    else
+        StandRig.stance = "guard"
+        local baseOffset = ComputePositionOffset(Cfg.StandPosition, t)
+        StandRig.motor.Transform = baseOffset * CFrame.new(0, bobY, 0)
+    end
+
+    -- Multi-Stand formation clones
+    if Cfg.MultiStand then
+        local count = (Cfg.StandPosition == "line" or Cfg.StandPosition == "x") and 4 or 3
+        EnsureMultiStandClones(count)
+        for idx, part in ipairs(StandRig.clones) do
+            local targetCF = root.CFrame
+            if Cfg.StandPosition == "line" then
+                targetCF = root.CFrame * CFrame.new((idx - 2) * 2.4, 1.4, 3.2 + bobY)
+            elseif Cfg.StandPosition == "x" then
+                local sx = (idx % 2 == 0) and 2.5 or -2.5
+                local sz = (idx <= 2) and 2.5 or -2.5
+                targetCF = root.CFrame * CFrame.new(sx, 1.5 + bobY, sz)
+            else
+                local ang = t * (tonumber(Cfg.OrbitSpeed) or 2.5) + (idx * (math.pi * 2 / count))
+                targetCF = root.CFrame * CFrame.new(math.cos(ang) * 3.6, 1.4 + bobY, math.sin(ang) * 3.6)
+            end
+            pcall(function() part.CFrame = targetCF end)
+        end
+    elseif #StandRig.clones > 0 then
+        ClearStandClones()
+    end
+
+    -- Stand Text letters (1 stand block per character)
+    if #StandRig.textParts > 0 then
+        local total = #StandRig.textParts
+        local spacing = 1.65
+        local startX = -((total - 1) * spacing) * 0.5
+        for _, entry in ipairs(StandRig.textParts) do
+            local xOff = startX + (entry.index - 1) * spacing
+            local waveY = math.sin(t * 4.0 + entry.index * 0.5) * 0.25
+            local cf = root.CFrame * CFrame.new(xOff, 3.6 + waveY, -2.5)
+            pcall(function() entry.part.CFrame = cf end)
+        end
+    end
+end)
+
+Runtime.Connect(LP.CharacterAdded, function()
+    if Cfg.StandEnabled then
+        task.wait(0.35)
+        if Runtime.alive and Cfg.StandEnabled then BuildStandRig() end
+    end
+end)
+
+table.insert(Runtime.cleanups, DestroyStandRig)
+
+-- ═══════════════════════════════════════
+-- CORE & MULTI-KEY GROQ API FUNCTIONS
 -- ═══════════════════════════════════════
 
 local function DoRequest(url, method, headers, body)
@@ -618,44 +1028,102 @@ local function StopEmote()
     end
 end
 
-local function PlayAnimationId(animId, looped, duration)
+local function StopAllAnimations()
+    StopEmote()
+    StopCopiedEmote()
+    StandRig.flyMode = nil
+    StandRig.flyOffsetY = 0
+    StandRig.flyAmp = 0.22
+    StandRig.flySpeed = 3.5
+    local char = LP.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        pcall(function()
+            for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+                tr:Stop(0.15)
+            end
+        end)
+    end
+end
+
+local function PlayAnimationId(animId, looped, duration, isCopyTrack)
     if not Runtime.alive or type(animId) ~= "string" or animId == "" then return false end
+    local cleanId = animId:match("^%d+$") and ("rbxassetid://" .. animId) or animId
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
     if not animator then return false end
     local animation = Instance.new("Animation")
-    animation.AnimationId = animId
+    animation.AnimationId = cleanId
     local ok, track = pcall(function() return animator:LoadAnimation(animation) end)
     animation:Destroy()
     if not ok or not track then return false end
-    StopEmote()
-    Runtime.emoteTrack = track
+    if isCopyTrack then
+        StopCopiedEmote()
+        StandRig.copiedTrack = track
+    else
+        StopEmote()
+        Runtime.emoteTrack = track
+    end
     pcall(function() track.Priority = Enum.AnimationPriority.Action end)
     if looped ~= nil then pcall(function() track.Looped = looped end) end
     track:Play()
     if duration and duration > 0 then
         task.delay(duration, function()
-            if Runtime.emoteTrack == track then StopEmote() end
+            if isCopyTrack and StandRig.copiedTrack == track then
+                StopCopiedEmote()
+            elseif not isCopyTrack and Runtime.emoteTrack == track then
+                StopEmote()
+            end
         end)
     end
     return true
 end
 
-local function PlayEmote(name)
-    if not EMOTES[name] then return end
-    PlayAnimationId(EMOTES[name], false, 3.5)
+local function PlayEmote(nameOrId)
+    if type(nameOrId) ~= "string" or nameOrId == "" then return false, "Specify an emote name or animation ID." end
+    local upper = Trim(nameOrId):upper()
+    if EMOTES[upper] then
+        local ok = PlayAnimationId(EMOTES[upper], false, 3.5, false)
+        return ok, ok and ("Playing emote: " .. upper) or "Could not play emote."
+    end
+    local ok = PlayAnimationId(Trim(nameOrId), false, 4.0, false)
+    return ok, ok and ("Playing animation: " .. Trim(nameOrId)) or "Invalid animation ID."
 end
 
--- animations
+local function PlayFlyPreset(arg)
+    local raw = Trim(arg or "hover"):lower()
+    if not Cfg.StandEnabled then
+        SetStandEnabled(true)
+    end
+    local preset = FLY_PRESETS[raw]
+    if preset then
+        StandRig.flyMode = raw
+        StandRig.flyOffsetY = preset.offsetY
+        StandRig.flyAmp = preset.amp
+        StandRig.flySpeed = preset.speed
+        PlayAnimationId(preset.anim, true, 12, false)
+        return true, "Stand fly mode: " .. raw
+    end
+    if raw ~= "" then
+        StandRig.flyMode = "custom"
+        StandRig.flyOffsetY = 2.4
+        StandRig.flyAmp = 0.4
+        local ok = PlayAnimationId(Trim(arg), true, 12, false)
+        return ok, ok and ("Stand flying with animation: " .. Trim(arg)) or "Invalid fly preset or animation ID."
+    end
+    return false, "Usage: !fly <hover|glide|float|rush|animation-id>"
+end
+
 local DEFAULT_LOCOMOTION_IDS = {
-    ["507766388"] = true, ["507766666"] = true, ["507766951"] = true, -- R15 idle
-    ["507777826"] = true, ["913402848"] = true, ["507767714"] = true, -- R15 walk/run
-    ["507765000"] = true, ["507767968"] = true, ["507765644"] = true, -- R15 jump/fall/climb
-    ["507784897"] = true, ["507785072"] = true, ["2506281703"] = true, -- R15 swim/sit
-    ["180435571"] = true, ["180435792"] = true, ["180426354"] = true, -- R6 idle/walk
-    ["125750702"] = true, ["180436148"] = true, ["180436334"] = true, -- R6 jump/fall/climb
-    ["178130996"] = true, ["180435342"] = true, -- R6 sit/swim
+    ["507766388"] = true, ["507766666"] = true, ["507766951"] = true,
+    ["507777826"] = true, ["913402848"] = true, ["507767714"] = true,
+    ["507765000"] = true, ["507767968"] = true, ["507765644"] = true,
+    ["507784897"] = true, ["507785072"] = true, ["2506281703"] = true,
+    ["180435571"] = true, ["180435792"] = true, ["180426354"] = true,
+    ["125750702"] = true, ["180436148"] = true, ["180436334"] = true,
+    ["178130996"] = true, ["180435342"] = true,
 }
 
 local function CopyPlayerEmote(targetPlayer)
@@ -699,7 +1167,7 @@ local function CopyPlayerEmote(targetPlayer)
     end
 
     local animId = targetTrack.Animation.AnimationId
-    local started = PlayAnimationId(animId, targetTrack.Looped, targetTrack.Looped and 20 or 6)
+    local started = PlayAnimationId(animId, targetTrack.Looped, targetTrack.Looped and 20 or 6, true)
     if not started then
         return false, "Failed to load animation (" .. tostring(animId) .. ")."
     end
@@ -707,16 +1175,30 @@ local function CopyPlayerEmote(targetPlayer)
 end
 
 -- ═══════════════════════════════════════
--- movement
+-- MOVEMENT, UNSTUCK (SEAT & <16 SPD) & PATHFINDING
 -- ═══════════════════════════════════════
 
 local BotAction = {
-    mode = "none",       -- "none" | "follow" | "goto_pos" | "goto_player" | "goto_part"
+    mode = "none",
     targetPlayer = nil,
     targetPos = nil,
     targetPart = nil,
     targetLabel = "",
+    waypoints = {},
+    wpIndex = 1,
+    lastPathTime = 0,
+    lastPathGoal = nil,
+    slowSince = nil,
+    lastJumpTime = 0,
 }
+
+local function ResetPathState()
+    table.clear(BotAction.waypoints)
+    BotAction.wpIndex = 1
+    BotAction.lastPathTime = 0
+    BotAction.lastPathGoal = nil
+    BotAction.slowSince = nil
+end
 
 local function GetInstanceWorldPos(inst)
     if not inst or not inst.Parent then return nil end
@@ -735,17 +1217,18 @@ end
 local function FindPlayerByNameOrDisplay(query)
     local q = Trim(query):gsub("^@", ""):lower()
     if q == "" then return nil end
+    if q == "me" or q == "owner" or q == LP.Name:lower() or q == LP.DisplayName:lower() then
+        return LP
+    end
     local bestPartial = nil
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP then
-            local uname = p.Name:lower()
-            local dname = p.DisplayName:lower()
-            if uname == q or dname == q then
-                return p
-            end
-            if not bestPartial and (uname:find(q, 1, true) or dname:find(q, 1, true)) then
-                bestPartial = p
-            end
+        local uname = p.Name:lower()
+        local dname = p.DisplayName:lower()
+        if uname == q or dname == q then
+            return p
+        end
+        if not bestPartial and (uname:find(q, 1, true) or dname:find(q, 1, true)) then
+            bestPartial = p
         end
     end
     return bestPartial
@@ -781,8 +1264,12 @@ local function StopBotMovement(alsoStopEmote)
     BotAction.targetPos = nil
     BotAction.targetPart = nil
     BotAction.targetLabel = ""
+    ResetPathState()
     Cfg.AutoFollow = false
-    if alsoStopEmote then StopEmote() end
+    if Cfg.StandPosition == "orbit" then
+        Cfg.StandPosition = "back"
+    end
+    if alsoStopEmote then StopAllAnimations() end
     local char = LP.Character
     local humanoid = char and char:FindFirstChildOfClass("Humanoid")
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -790,6 +1277,107 @@ local function StopBotMovement(alsoStopEmote)
         pcall(function() humanoid:MoveTo(hrp.Position) end)
     end
 end
+
+local function ForceJump(humanoid, char)
+    if not humanoid then return end
+    local now = os.clock()
+    if now - BotAction.lastJumpTime < 0.75 then return end
+    BotAction.lastJumpTime = now
+    pcall(function()
+        if humanoid.Sit or humanoid.SeatPart then
+            humanoid.Sit = false
+            local weld = char and char:FindFirstChildWhichIsA("Weld", true)
+            if weld and weld.Name == "SeatWeld" then weld:Destroy() end
+        end
+        humanoid.Jump = true
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end)
+end
+
+local function ComputeNewPath(fromPos, toPos, humanoid)
+    ResetPathState()
+    BotAction.lastPathTime = os.clock()
+    BotAction.lastPathGoal = toPos
+    local agentRadius = 2.2
+    local agentHeight = 5.0
+    if humanoid then
+        pcall(function()
+            if humanoid.HipHeight and humanoid.HipHeight > 0 then
+                agentHeight = math.clamp(humanoid.HipHeight * 2.4, 3.5, 8)
+            end
+        end)
+    end
+    local path = PathfindingService:CreatePath({
+        AgentRadius = agentRadius,
+        AgentHeight = agentHeight,
+        AgentCanJump = true,
+        WaypointSpacing = 4,
+    })
+    local ok = pcall(function() path:ComputeAsync(fromPos, toPos) end)
+    if ok and path.Status == Enum.PathStatus.Success then
+        local wps = path:GetWaypoints()
+        if wps and #wps > 1 then
+            BotAction.waypoints = wps
+            BotAction.wpIndex = 2
+            return true
+        end
+    end
+    return false
+end
+
+local function StepMovementToward(humanoid, hrp, char, goalPos, usePathfinding)
+    if not humanoid or not hrp or not goalPos then return end
+    local now = os.clock()
+
+    if humanoid.Sit or humanoid.SeatPart ~= nil then
+        ForceJump(humanoid, char)
+        if usePathfinding then
+            ComputeNewPath(hrp.Position, goalPos, humanoid)
+        end
+    end
+
+    local vel = hrp.AssemblyLinearVelocity
+    local horizSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+    local flatGoalDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(goalPos.X, 0, goalPos.Z)).Magnitude
+
+    if flatGoalDist > 4 and horizSpeed < 16 then
+        if not BotAction.slowSince then
+            BotAction.slowSince = now
+        elseif now - BotAction.slowSince >= 0.45 then
+            BotAction.slowSince = now
+            ForceJump(humanoid, char)
+            if usePathfinding then
+                ComputeNewPath(hrp.Position, goalPos, humanoid)
+            end
+        end
+    else
+        BotAction.slowSince = nil
+    end
+
+    if usePathfinding and #BotAction.waypoints >= BotAction.wpIndex then
+        local wp = BotAction.waypoints[BotAction.wpIndex]
+        if wp then
+            local wpFlatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(wp.Position.X, 0, wp.Position.Z)).Magnitude
+            if wpFlatDist <= 3.5 then
+                BotAction.wpIndex = BotAction.wpIndex + 1
+                wp = BotAction.waypoints[BotAction.wpIndex]
+            end
+            if wp then
+                if wp.Action == Enum.PathWaypointAction.Jump then
+                    ForceJump(humanoid, char)
+                end
+                pcall(function() humanoid:MoveTo(wp.Position) end)
+                return
+            end
+        end
+    end
+
+    pcall(function() humanoid:MoveTo(goalPos) end)
+end
+
+-- ═══════════════════════════════════════
+-- CHAT & AI HELPERS
+-- ═══════════════════════════════════════
 
 local function ParseAIText(raw)
     local actions, text = {}, type(raw) == "string" and raw or ""
@@ -845,6 +1433,7 @@ local function GetNearbyPlayers(radius)
 end
 
 local function IsNearby(player, radius)
+    if player == LP then return true end
     local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if not myHRP or not player.Character then return false end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
@@ -907,7 +1496,7 @@ local function ExportChatLog()
     if #History == 0 then return false, "No public history to export." end
     if type(writefile) ~= "function" then return false, "File saving is unavailable." end
     local lines = {
-        "-- AI Chat Bot Groq Log --",
+        "-- SilentAI Groq Log --",
         "-- Provider: Groq | Model: " .. Cfg.Model .. " --",
         "",
     }
@@ -920,7 +1509,7 @@ local function ExportChatLog()
 end
 
 -- ═══════════════════════════════════════
--- messaging
+-- GROQ AI MESSAGING (WITH UNLIMITED KEY FAILOVER)
 -- ═══════════════════════════════════════
 
 local function BuildSystemMsg(nearby)
@@ -931,8 +1520,14 @@ local function BuildSystemMsg(nearby)
         "Setting: You are currently playing a game on Roblox.",
         "Bot name: " .. Cfg.BotName,
         "Your Roblox username: " .. LP.Name .. (LP.DisplayName ~= LP.Name and " (display: " .. LP.DisplayName .. ")" or ""),
-        "Local operator: " .. BOT_OWNER .. ". You are an AI chat bot; be honest about that if asked.",
+        "Local operator: " .. BOT_OWNER .. ". You are SilentAI; be honest about that if asked.",
     }
+    if Cfg.StandEnabled then
+        table.insert(ctx, string.format("SilentStands ACTIVE: Stand '%s' (Cry: '%s', Position: %s, Stance: %s), bound to %s.", Cfg.StandName, Cfg.StandCry, Cfg.StandPosition, StandRig.stance, BOT_OWNER))
+        if Cfg.StandAI then
+            table.insert(ctx, "Act as a JoJo-style Stand entity supporting your user while keeping replies short and Roblox-appropriate.")
+        end
+    end
     if BotAction.mode ~= "none" then
         table.insert(ctx, "Current movement action: " .. BotAction.mode .. (BotAction.targetLabel ~= "" and (" -> " .. BotAction.targetLabel) or ""))
     end
@@ -1068,7 +1663,7 @@ local function CallGroq(msgs, bodyExtra)
             local nextIndex = (keyIndex % totalKeys) + 1
             Cfg.ActiveKeyIndex = nextIndex
             Cfg.GroqKey = Cfg.GroqKeys[nextIndex]
-            warn(string.format("[AI Bot] %s -> Switching to Key #%d (%s)", lastError, nextIndex, MaskKey(Cfg.GroqKey)))
+            warn(string.format("[SilentAI] %s -> Switching to Key #%d (%s)", lastError, nextIndex, MaskKey(Cfg.GroqKey)))
             task.wait(0.15)
         end
     end
@@ -1082,7 +1677,7 @@ local function CallGroq(msgs, bodyExtra)
 end
 
 -- ═══════════════════════════════════════
--- status
+-- BILLBOARD STATUS BADGE
 -- ═══════════════════════════════════════
 
 local Billboard = { state = "ready", tweens = {}, transitions = {}, animating = false }
@@ -1271,7 +1866,7 @@ Runtime.Connect(LP.CharacterRemoving, function()
 end)
 
 -- ═══════════════════════════════════════
--- chat and queue
+-- QUEUE, CHAT & COMMAND PARSER (! & PUBLIC)
 -- ═══════════════════════════════════════
 
 local function CallAI(item)
@@ -1335,7 +1930,7 @@ local function ProcessQueue()
                     if not result then
                         Runtime.stats.errors = Runtime.stats.errors + 1
                         Runtime.stats.lastError = err or "Unknown error"
-                        warn("[AI Bot] " .. Runtime.stats.lastError)
+                        warn("[SilentAI] " .. Runtime.stats.lastError)
                     end
                     UpdateBillboard(not result and "error" or Cfg.Enabled and "ready" or "paused")
                     if item.callback then pcall(item.callback, result, err) end
@@ -1373,106 +1968,323 @@ local function QueueManual(item)
 end
 
 local function DoIntroduce()
-    QueueManual({ text = "Introduce yourself as an AI chat bot in one short friendly sentence.", name = LP.Name, introduce = true })
+    QueueManual({ text = "Introduce yourself as SilentAI in one short friendly sentence.", name = LP.Name, introduce = true })
 end
 
--- commands 2
-local function TryExecutePublicCommand(sender, rawText)
-    if not Cfg.PublicCommands then return false end
-    local botPrefix = Trim(Cfg.BotName):lower()
-    if botPrefix == "" then return false end
+local function ParseBoolArg(arg, currentVal)
+    local a = Trim(arg):lower()
+    if a == "on" or a == "true" or a == "1" then return true end
+    if a == "off" or a == "false" or a == "0" then return false end
+    return not currentVal
+end
+
+-- Executes "!" commands and "(botname) <command>"
+local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
+    local isOwner = (sender == LP) or isLocalOwner
+    if not isOwner and not Cfg.PublicCommands then return false end
 
     local cleaned = Trim(rawText)
-    if cleaned:sub(1, #botPrefix):lower() ~= botPrefix then return false end
-    -- Ensure bot name is followed by space or punctuation
-    local nextChar = cleaned:sub(#botPrefix + 1, #botPrefix + 1)
-    if nextChar ~= "" and not nextChar:match("[%s,:;!%.%-]") then return false end
+    local botPrefix = Trim(Cfg.BotName):lower()
+    local body = cleaned
 
-    local rest = Trim(cleaned:sub(#botPrefix + 1):gsub("^[%s,:;!%.%-]+", ""))
-    if rest == "" then return false end
-    local lowerRest = rest:lower():gsub("[%.!%?]+$", "")
+    -- Strip optional "(botname) " prefix if present
+    if botPrefix ~= "" and cleaned:sub(1, #botPrefix):lower() == botPrefix then
+        local nextChar = cleaned:sub(#botPrefix + 1, #botPrefix + 1)
+        if nextChar == "" or nextChar:match("[%s,:;!%.%-]") then
+            local afterName = Trim(cleaned:sub(#botPrefix + 1):gsub("^[%s,:;!%.%-]+", ""))
+            if afterName:sub(1, 1) == "!" then
+                body = afterName
+            else
+                -- Legacy natural phrasing support
+                local lowerAfter = afterName:lower():gsub("[%.!%?]+$", "")
+                if lowerAfter == "come here" or lowerAfter == "come" then
+                    body = "!come"
+                elseif lowerAfter == "follow me" or lowerAfter == "follow" then
+                    body = "!follow"
+                elseif lowerAfter == "stop" then
+                    body = "!stop"
+                elseif lowerAfter == "copy emote" or lowerAfter == "copy animation" then
+                    body = "!copyemote"
+                elseif lowerAfter == "summon" or lowerAfter == "stand" then
+                    body = "!summon"
+                elseif lowerAfter == "dismiss" or lowerAfter == "unsummon" then
+                    body = "!vanish"
+                elseif lowerAfter == "stand rush" or lowerAfter == "rush" or lowerAfter == "ora" then
+                    body = "!rush"
+                else
+                    local goTarget = afterName:match("^[Gg][Oo]%s+[Tt][Oo]%s+(.+)$")
+                    if goTarget then
+                        body = "!goto " .. goTarget
+                    end
+                end
+            end
+        end
+    end
 
-    -- 1. "(name) come here"
-    if lowerRest == "come here" or lowerRest == "come" then
-        local hrp = sender.Character and sender.Character:FindFirstChild("HumanoidRootPart")
-        if not hrp then
-            SafeNotify({ Title = "Command failed", Content = sender.DisplayName .. " has no character position." })
+    if body:sub(1, 1) ~= "!" then
+        return false
+    end
+
+    local cmdPart, argPart = body:match("^!(%S+)%s*(.-)%s*$")
+    if not cmdPart then return false end
+    local cmd = cmdPart:lower()
+    local arg = Trim(argPart)
+    local lowerArg = arg:lower():gsub("[%.!%?]+$", "")
+
+    -- 1. !summon (aliases: !s)
+    if cmd == "summon" or cmd == "s" then
+        SetStandEnabled(true)
+        Cfg.StandPosition = "back"
+        Cfg.AutoFollow = false
+        ResetPathState()
+        BotAction.mode = "follow"
+        BotAction.targetPlayer = LP
+        BotAction.targetLabel = LP.DisplayName
+        SaveCfg()
+        SafeNotify({ Title = "SilentStands", Content = "Summoned " .. Cfg.StandName .. " and following owner!" })
+        return true
+    end
+
+    -- 2. !vanish (alias: !v)
+    if cmd == "vanish" or cmd == "v" then
+        SetStandEnabled(false)
+        SafeNotify({ Title = "SilentStands", Content = Cfg.StandName .. " vanished." })
+        return true
+    end
+
+    -- 3. !follow [player] (alias: !frame)
+    if cmd == "follow" or cmd == "frame" then
+        local targetPlayer = lowerArg ~= "" and FindPlayerByNameOrDisplay(lowerArg) or (sender or LP)
+        if not targetPlayer then
+            SafeNotify({ Title = "Follow failed", Content = "Player '" .. arg .. "' not found." })
             return true
         end
         Cfg.AutoFollow = false
+        ResetPathState()
+        BotAction.mode = "follow"
+        BotAction.targetPlayer = targetPlayer
+        BotAction.targetPos = nil
+        BotAction.targetPart = nil
+        BotAction.targetLabel = targetPlayer.DisplayName
+        SafeNotify({ Title = "SilentAI", Content = "Following " .. targetPlayer.DisplayName })
+        return true
+    end
+
+    -- 4. !come (helper for come here)
+    if cmd == "come" or cmd == "comehere" then
+        local hrp = sender and sender.Character and sender.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return true end
+        Cfg.AutoFollow = false
+        ResetPathState()
         BotAction.mode = "goto_pos"
         BotAction.targetPlayer = nil
         BotAction.targetPart = nil
         BotAction.targetPos = hrp.Position
         BotAction.targetLabel = sender.DisplayName .. "'s spot"
-        SafeNotify({ Title = "Public Command", Content = sender.DisplayName .. ": Come here" })
+        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+        local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+        if hum and myHRP then ComputeNewPath(myHRP.Position, hrp.Position, hum) end
+        SafeNotify({ Title = "SilentAI", Content = "Coming to " .. sender.DisplayName })
         return true
     end
 
-    -- 2. "(name) follow me"
-    if lowerRest == "follow me" or lowerRest == "follow" then
-        Cfg.AutoFollow = false
-        BotAction.mode = "follow"
-        BotAction.targetPlayer = sender
-        BotAction.targetPos = nil
-        BotAction.targetPart = nil
-        BotAction.targetLabel = sender.DisplayName
-        SafeNotify({ Title = "Public Command", Content = "Following " .. sender.DisplayName .. " until '" .. Cfg.BotName .. " stop'" })
-        return true
-    end
-
-    -- 3. "(name) stop"
-    if lowerRest == "stop" or lowerRest == "stop following" then
-        StopBotMovement(true)
-        SafeNotify({ Title = "Public Command", Content = "Stopped by " .. sender.DisplayName })
-        return true
-    end
-
-    -- 4. "(name) copy emote"
-    if lowerRest == "copy emote" or lowerRest == "copy animation" or lowerRest == "copy anim" then
-        local ok, msg = CopyPlayerEmote(sender)
-        SafeNotify({ Title = ok and "Copied Emote" or "Copy Emote", Content = msg })
-        return true
-    end
-
-    -- 5. "(name) go to (player or workspace item)"
-    local goTargetRaw = rest:match("^[Gg][Oo]%s+[Tt][Oo]%s+(.+)$") or rest:match("^[Gg][Oo][Tt][Oo]%s+(.+)$")
-    if goTargetRaw then
-        local targetQuery = Trim(goTargetRaw:gsub("[%.!%?]+$", ""))
-        if targetQuery == "" then return false end
-
+    -- 5. !goto <player or workspace item>
+    if cmd == "goto" or cmd == "go" then
+        local targetQuery = Trim(arg:gsub("^[Tt][Oo]%s+", ""):gsub("[%.!%?]+$", ""))
+        if targetQuery == "" then return true end
         local targetPlayer = FindPlayerByNameOrDisplay(targetQuery)
         if targetPlayer then
             Cfg.AutoFollow = false
+            ResetPathState()
             BotAction.mode = "goto_player"
             BotAction.targetPlayer = targetPlayer
             BotAction.targetPos = nil
             BotAction.targetPart = nil
             BotAction.targetLabel = targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")"
-            SafeNotify({ Title = "Public Command", Content = "Going to player: " .. BotAction.targetLabel })
+            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local tHRP = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hum and myHRP and tHRP then ComputeNewPath(myHRP.Position, tHRP.Position, hum) end
+            SafeNotify({ Title = "SilentAI", Content = "Going to " .. BotAction.targetLabel })
             return true
         end
-
         local targetInst = FindWorkspaceTarget(targetQuery)
         if targetInst then
             Cfg.AutoFollow = false
+            ResetPathState()
             BotAction.mode = "goto_part"
             BotAction.targetPlayer = nil
             BotAction.targetPos = nil
             BotAction.targetPart = targetInst
             BotAction.targetLabel = targetInst.Name
-            SafeNotify({ Title = "Public Command", Content = "Going to object: " .. targetInst.Name })
+            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            local myHRP = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            local pos = GetInstanceWorldPos(targetInst)
+            if hum and myHRP and pos then ComputeNewPath(myHRP.Position, pos, hum) end
+            SafeNotify({ Title = "SilentAI", Content = "Going to " .. targetInst.Name })
             return true
         end
+        SafeNotify({ Title = "Target not found", Content = "No player or workspace item matching '" .. targetQuery .. "'." })
+        return true
+    end
 
-        SafeNotify({ Title = "Target not found", Content = "Could not find player or workspace item '" .. targetQuery .. "'." })
+    -- 6. !stop
+    if cmd == "stop" then
+        StopBotMovement(true)
+        SafeNotify({ Title = "SilentAI", Content = "Stopped active movement and animations." })
+        return true
+    end
+
+    -- 7. !help (aliases: !cmds, !commands)
+    if cmd == "help" or cmd == "cmds" or cmd == "commands" then
+        SafeNotify({
+            Title = "SilentAI & SilentStands Commands",
+            Content = "!summon (!s), !vanish (!v), !follow [player] (!frame), !stop, !chatcmd, !weld [on|off], !multistand [on|off], !mutesound, !say <msg>\nPos: !back, !left, !right, !line, !x, !under, !alt, !orbit [speed]\nAnim: !fly <preset|id>, !emote <name|id>, !copyemote [player], !stopcopyemote, !stopanim, !text <msg|off>",
+            Duration = 12,
+        })
+        return true
+    end
+
+    -- 8. !chatcmd
+    if cmd == "chatcmd" or cmd == "chatcmds" then
+        Cfg.PublicCommands = ParseBoolArg(arg, Cfg.PublicCommands)
+        SaveCfg()
+        SafeNotify({ Title = "Chat Commands", Content = Cfg.PublicCommands and "Enabled" or "Disabled" })
+        return true
+    end
+
+    -- 9. !weld [on|off] (aliases: !usewelding, !targetweld)
+    if cmd == "weld" or cmd == "usewelding" or cmd == "targetweld" then
+        Cfg.StandWeld = ParseBoolArg(arg, Cfg.StandWeld)
+        if not Cfg.StandEnabled then SetStandEnabled(true) end
+        local char = LP.Character
+        local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
+        SyncStandAttachment(root)
+        SaveCfg()
+        SafeNotify({ Title = "SilentStands Weld", Content = Cfg.StandWeld and "Welding ON" or "Welding OFF" })
+        return true
+    end
+
+    -- 10. !multistand [on|off] (aliases: !multi, !multipos, !multianim)
+    if cmd == "multistand" or cmd == "multi" or cmd == "multipos" or cmd == "multianim" then
+        Cfg.MultiStand = ParseBoolArg(arg, Cfg.MultiStand)
+        if Cfg.MultiStand and not Cfg.StandEnabled then SetStandEnabled(true) end
+        if not Cfg.MultiStand then ClearStandClones() end
+        SaveCfg()
+        SafeNotify({ Title = "Multi-Stand", Content = Cfg.MultiStand and "Multi-Stand ON" or "Multi-Stand OFF" })
+        return true
+    end
+
+    -- 11. !mutesound (aliases: !mute, !mutestand)
+    if cmd == "mutesound" or cmd == "mute" or cmd == "mutestand" then
+        Cfg.MuteStandSound = ParseBoolArg(arg, Cfg.MuteStandSound)
+        ApplyStandSoundMute()
+        SaveCfg()
+        SafeNotify({ Title = "Stand Sound", Content = Cfg.MuteStandSound and "Muted" or "Unmuted" })
+        return true
+    end
+
+    -- 12. !say <message> (alias: !chat)
+    if cmd == "say" or cmd == "chat" then
+        if arg == "" then
+            SafeNotify({ Title = "Usage", Content = "!say <message>" })
+            return true
+        end
+        QueueManual({
+            text = "Say this exact message or adapt it in character: " .. arg,
+            name = sender and sender.Name or LP.Name,
+            userId = sender and sender.UserId or LP.UserId,
+        })
+        return true
+    end
+
+    -- 13. Positions: !back, !left, !right, !line (!row, !lines), !x (!cross), !under, !alt, !orbit [speed]
+    local posMap = {
+        back = "back",
+        left = "left",
+        right = "right",
+        line = "line", row = "line", lines = "line",
+        x = "x", cross = "x",
+        under = "under",
+        alt = "alt",
+    }
+    if posMap[cmd] then
+        if not Cfg.StandEnabled then SetStandEnabled(true) end
+        Cfg.StandPosition = posMap[cmd]
+        SaveCfg()
+        SafeNotify({ Title = "SilentStands Position", Content = "Position set to: " .. Cfg.StandPosition })
+        return true
+    end
+    if cmd == "orbit" then
+        if not Cfg.StandEnabled then SetStandEnabled(true) end
+        local spd = tonumber(arg)
+        if spd then
+            Cfg.OrbitSpeed = math.clamp(spd, 0.5, 20)
+        end
+        Cfg.StandPosition = "orbit"
+        SaveCfg()
+        SafeNotify({ Title = "SilentStands Orbit", Content = string.format("Orbiting at speed %.1f", Cfg.OrbitSpeed) })
+        return true
+    end
+
+    -- 14. Rush helper
+    if cmd == "rush" or cmd == "ora" then
+        TriggerStandRush(2.4)
+        SafeNotify({ Title = Cfg.StandName, Content = Cfg.StandCry })
+        return true
+    end
+
+    -- 15. !fly <preset|animation-id> (aliases: !anim, !animation)
+    if cmd == "fly" or cmd == "anim" or cmd == "animation" then
+        local ok, msg = PlayFlyPreset(arg ~= "" and arg or "hover")
+        SafeNotify({ Title = "SilentStands Fly/Anim", Content = msg })
+        return true
+    end
+
+    -- 16. !emote <name|animation-id>
+    if cmd == "emote" then
+        local ok, msg = PlayEmote(arg ~= "" and arg or "wave")
+        SafeNotify({ Title = "Emote", Content = msg })
+        return true
+    end
+
+    -- 17. !copyemote [player] (aliases: !copyanim, !mirroremote)
+    if cmd == "copyemote" or cmd == "copyanim" or cmd == "mirroremote" then
+        local targetPlayer = lowerArg ~= "" and FindPlayerByNameOrDisplay(lowerArg) or (sender or LP)
+        if not targetPlayer then
+            SafeNotify({ Title = "Copy Emote", Content = "Player '" .. arg .. "' not found." })
+            return true
+        end
+        local ok, msg = CopyPlayerEmote(targetPlayer)
+        SafeNotify({ Title = ok and "Copied Emote" or "Copy Emote", Content = msg })
+        return true
+    end
+
+    -- 18. !stopcopyemote (alias: !stopmirror)
+    if cmd == "stopcopyemote" or cmd == "stopmirror" then
+        StopCopiedEmote()
+        SafeNotify({ Title = "SilentStands", Content = "Stopped copied emote." })
+        return true
+    end
+
+    -- 19. !stopanim (alias: !resetanim)
+    if cmd == "stopanim" or cmd == "resetanim" then
+        StopAllAnimations()
+        SafeNotify({ Title = "SilentStands", Content = "Reset active animations." })
+        return true
+    end
+
+    -- 20. !text <message> / !text off / !text clear
+    if cmd == "text" then
+        local ok, msg = SetStandText(arg)
+        SafeNotify({ Title = "SilentStands Text", Content = msg })
         return true
     end
 
     return false
 end
 
-local function HandleCommand(text)
+local function HandleSlashCommand(text)
     local cmd, argument = text:match("^/ai%s+(%S+)%s*(.-)%s*$")
     if not cmd then return false end
     cmd = cmd:lower()
@@ -1482,6 +2294,20 @@ local function HandleCommand(text)
     elseif cmd == "stop" then
         StopBotMovement(true)
         SafeNotify({ Title = "Stopped", Content = "Movement and emote stopped." })
+        return true
+    elseif cmd == "stand" then
+        local arg = argument:lower()
+        if arg == "on" then SetStandEnabled(true)
+        elseif arg == "off" then SetStandEnabled(false)
+        else SetStandEnabled(not Cfg.StandEnabled) end
+        SafeNotify({ Title = "SilentStands", Content = Cfg.StandEnabled and (Cfg.StandName .. " active") or "Stand dismissed" })
+        return true
+    elseif cmd == "rush" then
+        TriggerStandRush(2.4)
+        SafeNotify({ Title = Cfg.StandName, Content = Cfg.StandCry })
+        return true
+    elseif cmd == "cry" then
+        QueueManual({ text = "Shout your Stand cry (" .. Cfg.StandCry .. ") dramatically in character.", name = LP.Name })
         return true
     elseif cmd == "follow" then
         local arg = argument:lower()
@@ -1506,19 +2332,23 @@ local function HandleCommand(text)
         end
     elseif cmd == "status" then
         SafeNotify({
-            Title = "AI Bot status",
-            Content = string.format("Groq (%d keys, #%d active) | %s\nAction: %s | Queue: %d | Replies: %d", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, #MsgQueue, Runtime.stats.replies),
+            Title = "SilentAI status",
+            Content = string.format("Groq (%d keys, #%d active) | %s\nAction: %s | Stand: %s | Queue: %d", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, Cfg.StandEnabled and "ON" or "OFF", #MsgQueue),
         })
         return true
     else
-        SafeNotify({ Title = "Commands", Content = "/ai on, off, stop, follow [on|off], vc, keys, clear, model MODEL_ID, status" })
+        SafeNotify({ Title = "Commands", Content = "/ai on, off, stop, stand [on|off], rush, cry, follow [on|off], vc, keys, clear, model MODEL_ID, status" })
         return true
     end
-    SafeNotify({ Title = "AI Bot", Content = "Command applied: " .. cmd })
+    SafeNotify({ Title = "SilentAI", Content = "Command applied: " .. cmd })
     return true
 end
 
-Runtime.Connect(LP.Chatted, function(text) if Runtime.ready then HandleCommand(text) end end)
+Runtime.Connect(LP.Chatted, function(text)
+    if not Runtime.ready then return end
+    if TryExecuteChatCommand(LP, text, true) then return end
+    HandleSlashCommand(text)
+end)
 
 local SeenMessages = {}
 Runtime.Connect(TCS.MessageReceived, function(msg)
@@ -1550,8 +2380,7 @@ Runtime.Connect(TCS.MessageReceived, function(msg)
         SeenMessages[messageId] = now
     end
 
-    -- Check public action commands first (e.g. "silentai come here", "silentai follow me", "silentai stop", "silentai go to X", "silentai copy emote")
-    if TryExecutePublicCommand(sender, text) then
+    if TryExecuteChatCommand(sender, text, false) then
         return
     end
 
@@ -1594,10 +2423,10 @@ task.spawn(function()
     end
 end)
 
--- Unified Movement Loop (handles public commands: follow me, come here, go to, + AutoFollow)
+-- Unified Movement Loop with Seat Jump, <16 Speed Unstuck & Pathfinding
 task.spawn(function()
     while Runtime.alive do
-        task.wait(0.25)
+        task.wait(0.2)
         if Runtime.alive and Runtime.ready and Cfg.Enabled then
             local char = LP.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
@@ -1608,10 +2437,16 @@ task.spawn(function()
                     local tHRP = target and target.Parent and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
                     if not target or not target.Parent then
                         StopBotMovement(false)
-                    elseif tHRP then
+                    elseif target ~= LP and tHRP then
                         local dist = (hrp.Position - tHRP.Position).Magnitude
                         if dist > Cfg.FollowDistance then
-                            pcall(function() humanoid:MoveTo(tHRP.Position) end)
+                            local movedFar = not BotAction.lastPathGoal or (BotAction.lastPathGoal - tHRP.Position).Magnitude > 6
+                            if #BotAction.waypoints == 0 or (movedFar and os.clock() - BotAction.lastPathTime > 1.0) then
+                                ComputeNewPath(hrp.Position, tHRP.Position, humanoid)
+                            end
+                            StepMovementToward(humanoid, hrp, char, tHRP.Position, true)
+                        else
+                            BotAction.slowSince = nil
                         end
                     end
 
@@ -1620,7 +2455,10 @@ task.spawn(function()
                     if flatDist <= 3.5 then
                         StopBotMovement(false)
                     else
-                        pcall(function() humanoid:MoveTo(BotAction.targetPos) end)
+                        if #BotAction.waypoints == 0 and os.clock() - BotAction.lastPathTime > 1.0 then
+                            ComputeNewPath(hrp.Position, BotAction.targetPos, humanoid)
+                        end
+                        StepMovementToward(humanoid, hrp, char, BotAction.targetPos, true)
                     end
 
                 elseif BotAction.mode == "goto_player" then
@@ -1633,7 +2471,11 @@ task.spawn(function()
                         if flatDist <= math.max(4, Cfg.FollowDistance) then
                             StopBotMovement(false)
                         else
-                            pcall(function() humanoid:MoveTo(tHRP.Position) end)
+                            local movedFar = not BotAction.lastPathGoal or (BotAction.lastPathGoal - tHRP.Position).Magnitude > 6
+                            if #BotAction.waypoints == 0 or (movedFar and os.clock() - BotAction.lastPathTime > 1.0) then
+                                ComputeNewPath(hrp.Position, tHRP.Position, humanoid)
+                            end
+                            StepMovementToward(humanoid, hrp, char, tHRP.Position, true)
                         end
                     end
 
@@ -1646,14 +2488,17 @@ task.spawn(function()
                         if flatDist <= 4.5 then
                             StopBotMovement(false)
                         else
-                            pcall(function() humanoid:MoveTo(pos) end)
+                            if #BotAction.waypoints == 0 and os.clock() - BotAction.lastPathTime > 1.0 then
+                                ComputeNewPath(hrp.Position, pos, humanoid)
+                            end
+                            StepMovementToward(humanoid, hrp, char, pos, true)
                         end
                     end
 
                 elseif Cfg.AutoFollow then
                     for _, target in ipairs(GetNearbyPlayers(Cfg.ProximityRadius)) do
                         if IsPlayerAllowed(target.username) and target.distance > Cfg.FollowDistance then
-                            pcall(function() humanoid:MoveTo(target.hrp.Position) end)
+                            StepMovementToward(humanoid, hrp, char, target.hrp.Position, true)
                             break
                         end
                     end
@@ -1666,11 +2511,11 @@ end)
 table.insert(Runtime.cleanups, function()
     table.clear(MsgQueue)
     DestroyBillboard()
-    StopEmote()
+    StopAllAnimations()
 end)
 
 -- ═══════════════════════════════════════
--- groq keys
+-- COMPACT SETUP WIZARD
 -- ═══════════════════════════════════════
 
 local function DetectDevicePlatform()
@@ -1747,7 +2592,7 @@ local function RunSetupWizard()
     titleLbl.TextSize = 13
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
     titleLbl.TextColor3 = Color3.fromRGB(240, 242, 245)
-    titleLbl.Text = "Groq AI Bot Setup · v" .. VERSION
+    titleLbl.Text = "SilentAI Setup · v" .. VERSION
     titleLbl.Parent = titleBar
 
     local closeBtn = Instance.new("TextButton")
@@ -1987,8 +2832,8 @@ local function RunSetupWizard()
             end)
 
         elseif step == 3 then
-            stepLbl.Text = "Step 3 of 3 · Bot Name & Personality"
-            descLbl.Text = "Set bot name, language, and personality preset (includes Catboy & -deres)."
+            stepLbl.Text = "Step 3 of 3 · SilentAI Name & Personality"
+            descLbl.Text = "Set bot name, language, and personality preset."
 
             local nameBox = Instance.new("TextBox")
             nameBox.Size = UDim2.new(0.48, 0, 0, 26)
@@ -2097,7 +2942,7 @@ local function RunSetupWizard()
         Cfg.ActiveKeyIndex = 1
         Cfg.GroqKey = keys[1] or "YOUR_GROQ_API_KEY"
         Cfg.Model = Trim(draftModel)
-        Cfg.BotName = Trim(draftBotName) ~= "" and Trim(draftBotName) or "silentai"
+        Cfg.BotName = Trim(draftBotName) ~= "" and Trim(draftBotName) or "SilentAI"
         Cfg.Language = Trim(draftLang) ~= "" and Trim(draftLang) or "Auto"
         Cfg.SystemPrompt = draftPrompt
         Cfg.SaveAPIKeys = draftSaveKeys
@@ -2116,7 +2961,7 @@ end
 if not setupAlreadyDone then RunSetupWizard() end
 
 -- ═══════════════════════════════════════
--- RAYFIELD 
+-- RAYFIELD GEN2 PANEL (SILENTAI & SILENTSTANDS)
 -- ═══════════════════════════════════════
 
 if not Runtime.alive then return end
@@ -2140,9 +2985,9 @@ local C = {
 }
 
 local Win = Rayfield:CreateWindow({
-    name = "Groq AI Chat Bot v" .. VERSION,
-    subtitle = "Groq · " .. Cfg.Model,
-    showName = "Groq AI Bot",
+    name = "SilentAI v" .. VERSION,
+    subtitle = "SilentAI · Groq · " .. Cfg.Model,
+    showName = "SilentAI",
     sidebarLayout = false,
     configuration = { autoSave = false, autoLoad = false },
     theme = {
@@ -2168,17 +3013,17 @@ Runtime.ready = true
 
 local function SessionSummary()
     local stats = Runtime.stats
-    return string.format("Groq (%d keys · #%d active) · %s\n%s · Action: %s · Queue %d/%d · Replies %d",
+    return string.format("SilentAI · Groq (%d keys · #%d) · %s\n%s · Action: %s · SilentStands: %s · Replies %d",
         #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, Cfg.Enabled and "Replying" or "Paused",
-        BotAction.mode, #MsgQueue, Cfg.QueueLimit, stats.replies)
+        BotAction.mode, Cfg.StandEnabled and "ON" or "OFF", stats.replies)
 end
 
 -- ─── Home ───
 local TabHome = Win:CreateTab({ name = "Home" })
-TabHome:CreateSection({ name = "Bot" })
+TabHome:CreateSection({ name = "SilentAI" })
 local statusText
 TabHome:CreateToggle({
-    name = "Enable AI Chat Bot",
+    name = "Enable SilentAI",
     value = Cfg.Enabled,
     callback = function(v)
         SetEnabled(v)
@@ -2194,11 +3039,12 @@ TabHome:CreateButton({
         local stats = Runtime.stats
         statusText:Set(SessionSummary())
         SafeNotify({
-            Title = "Session status",
+            Title = "SilentAI Session Status",
             Content = string.format(
-                "Provider: Groq (%d keys, #%d active)\nModel: %s | Action: %s\nQueue: %d / %d | Busy: %s\nRequests: %d | Replies: %d | Errors: %d\nLast error: %s",
-                #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, #MsgQueue, Cfg.QueueLimit, tostring(ProcessingMsg),
-                stats.requests, stats.replies, stats.errors, stats.lastError
+                "Provider: Groq (%d keys, #%d active)\nModel: %s | Action: %s\nSilentStands: %s (%s)\nRequests: %d | Replies: %d | Errors: %d",
+                #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode,
+                Cfg.StandEnabled and "Active" or "Off", Cfg.StandName,
+                stats.requests, stats.replies, stats.errors
             ),
             Duration = 12,
         })
@@ -2250,13 +3096,13 @@ TabHome:CreateButton({
         })
     end,
 })
-TabHome:CreateButton({ name = "Introduce the bot in chat", callback = function() task.spawn(DoIntroduce) end })
+TabHome:CreateButton({ name = "Introduce SilentAI in chat", callback = function() task.spawn(DoIntroduce) end })
 TabHome:CreateButton({
-    name = "Stop active movement / copied emote",
+    name = "Stop active movement / animations",
     callback = function()
         StopBotMovement(true)
         if statusText then statusText:Set(SessionSummary()) end
-        SafeNotify({ Title = "Stopped", Content = "Stopped active movement and copied emote." })
+        SafeNotify({ Title = "Stopped", Content = "Stopped active movement and animations." })
     end,
 })
 TabHome:CreateButton({
@@ -2272,7 +3118,7 @@ TabHome:CreateButton({
 local customSayText = ""
 TabHome:CreateInput({
     name = "Custom public message",
-    placeholder = "Type a line for the bot to say...",
+    placeholder = "Type a line for SilentAI to say...",
     callback = function(v) customSayText = v end,
     forgetState = true,
 })
@@ -2296,7 +3142,7 @@ TabHome:CreateButton({
 
 TabHome:CreateSection({ name = "Private chat" })
 local uiChatInput = ""
-TabHome:CreateInput({ name = "Your message", placeholder = "Ask silentai something...", callback = function(v) uiChatInput = v end, forgetState = true })
+TabHome:CreateInput({ name = "Your message", placeholder = "Ask SilentAI something...", callback = function(v) uiChatInput = v end, forgetState = true })
 TabHome:CreateButton({
     name = "Send privately",
     callback = function()
@@ -2307,7 +3153,7 @@ TabHome:CreateButton({
             userId = LP.UserId,
             private = true,
             callback = function(result, err)
-                SafeNotify({ Title = result and "Groq says:" or "No response", Content = result or err, Duration = 12 })
+                SafeNotify({ Title = result and "SilentAI says:" or "No response", Content = result or err, Duration = 12 })
             end,
         })
     end,
@@ -2322,14 +3168,134 @@ TabHome:CreateButton({
     end,
 })
 
+-- ─── SilentStands ───
+local TabStand = Win:CreateTab({ name = "SilentStands" })
+TabStand:CreateSection({ name = "SilentStands manifestation (Motor6D & Weld)" })
+TabStand:CreateToggle({
+    name = "Summon / Manifest SilentStands",
+    value = Cfg.StandEnabled,
+    callback = function(v)
+        SetStandEnabled(v)
+        if statusText then statusText:Set(SessionSummary()) end
+        SafeNotify({ Title = "SilentStands", Content = v and (Cfg.StandName .. " manifested") or "SilentStands vanished" })
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "Stand Name",
+    placeholder = "SilentStands",
+    value = Cfg.StandName,
+    callback = function(v)
+        Cfg.StandName = Trim(v) ~= "" and Trim(v) or "SilentStands"
+        SaveCfg()
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "Stand Cry",
+    placeholder = "ORA ORA ORA!",
+    value = Cfg.StandCry,
+    callback = function(v)
+        Cfg.StandCry = Trim(v) ~= "" and Trim(v) or "ORA ORA ORA!"
+        SaveCfg()
+    end,
+    forgetState = true,
+})
+TabStand:CreateToggle({
+    name = "Use welding (!weld)",
+    value = Cfg.StandWeld,
+    callback = function(v)
+        Cfg.StandWeld = v
+        local char = LP.Character
+        local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
+        SyncStandAttachment(root)
+        SaveCfg()
+    end,
+    forgetState = true,
+})
+TabStand:CreateToggle({
+    name = "Multi-Stand formation (!multistand)",
+    value = Cfg.MultiStand,
+    callback = function(v)
+        Cfg.MultiStand = v
+        if not v then ClearStandClones() end
+        SaveCfg()
+    end,
+    forgetState = true,
+})
+TabStand:CreateToggle({
+    name = "Mute Stand sound (!mutesound)",
+    value = Cfg.MuteStandSound,
+    callback = function(v)
+        Cfg.MuteStandSound = v
+        ApplyStandSoundMute()
+        SaveCfg()
+    end,
+    forgetState = true,
+})
+TabStand:CreateToggle({
+    name = "Stand AI persona context",
+    value = Cfg.StandAI,
+    callback = function(v)
+        Cfg.StandAI = v
+        SaveCfg()
+    end,
+    forgetState = true,
+})
+
+TabStand:CreateSection({ name = "SilentStands actions & text" })
+TabStand:CreateButton({
+    name = "Stand Rush (ORA ORA ORA!)",
+    callback = function()
+        TriggerStandRush(2.4)
+        SafeNotify({ Title = Cfg.StandName, Content = Cfg.StandCry })
+    end,
+})
+TabStand:CreateButton({
+    name = "Stand Cry & Talk (AI)",
+    callback = function()
+        TriggerStandRush(1.8)
+        QueueManual({
+            text = "Shout your Stand cry (" .. Cfg.StandCry .. ") and deliver a short dramatic Stand line.",
+            name = LP.Name,
+            userId = LP.UserId,
+        })
+    end,
+})
+local standTextInput = ""
+TabStand:CreateInput({
+    name = "Stand 3D Text (!text)",
+    placeholder = "Type message or 'off'",
+    callback = function(v) standTextInput = v end,
+    forgetState = true,
+})
+TabStand:CreateButton({
+    name = "Display / Update Stand Text",
+    callback = function()
+        local _, msg = SetStandText(standTextInput)
+        SafeNotify({ Title = "SilentStands Text", Content = msg })
+    end,
+})
+TabStand:CreateButton({
+    name = "Clear Stand Text",
+    callback = function()
+        ClearStandText()
+        SafeNotify({ Title = "SilentStands Text", Content = "Cleared Stand text." })
+    end,
+})
+TabStand:CreateText({
+    name = "Command reference",
+    text = "!summon (!s) • !vanish (!v) • !follow [player] (!frame) • !stop • !help (!cmds)\n!chatcmd • !weld • !multistand • !mutesound • !say <msg>\n!back • !left • !right • !line • !x • !under • !alt • !orbit [speed]\n!fly <preset|id> • !emote <name|id> • !copyemote [player] • !stopcopyemote • !stopanim • !text <msg|off>",
+})
+
 -- ─── Personality ───
 local TabPersonality = Win:CreateTab({ name = "Personality" })
 TabPersonality:CreateSection({ name = "Identity" })
 TabPersonality:CreateInput({
     name = "Bot Name",
-    placeholder = "silentai",
+    placeholder = "SilentAI",
     value = Cfg.BotName,
-    callback = function(v) Cfg.BotName = Trim(v) ~= "" and Trim(v) or "silentai"; SaveCfg(); UpdateBillboard() end,
+    callback = function(v) Cfg.BotName = Trim(v) ~= "" and Trim(v) or "SilentAI"; SaveCfg(); UpdateBillboard() end,
     forgetState = true,
 })
 TabPersonality:CreateInput({
@@ -2341,7 +3307,7 @@ TabPersonality:CreateInput({
 })
 TabPersonality:CreateInput({
     name = "Chat prefix",
-    placeholder = "e.g. [AI]: ",
+    placeholder = "e.g. [SilentAI]: ",
     value = Cfg.ChatPrefix,
     callback = function(v) Cfg.ChatPrefix = v; SaveCfg() end,
     forgetState = true,
@@ -2378,7 +3344,7 @@ presetDropdown = TabPersonality:CreateDropdown({
 })
 promptInput = TabPersonality:CreateInput({
     name = "System prompt",
-    placeholder = "Describe how the bot talks and behaves...",
+    placeholder = "Describe how SilentAI talks and behaves...",
     value = Cfg.SystemPrompt,
     callback = function(v)
         if Trim(v) == "" then return end
@@ -2412,14 +3378,14 @@ TabPersonality:CreateSlider({ name = "Max reply tokens", increment = 10, range =
 local TabReplies = Win:CreateTab({ name = "Replies" })
 TabReplies:CreateSection({ name = "Public chat commands" })
 TabReplies:CreateToggle({
-    name = "Enable public commands ((name) come here, follow me, stop, go to, copy emote)",
+    name = "Enable public chat commands (!chatcmd)",
     value = Cfg.PublicCommands,
     callback = function(v) Cfg.PublicCommands = v; SaveCfg() end,
     forgetState = true,
 })
 TabReplies:CreateText({
     name = "Public command syntax",
-    text = "• (name) come here  • (name) follow me  • (name) stop\n• (name) go to (player or workspace item)  • (name) copy emote",
+    text = "!summon (!s) • !vanish (!v) • !follow [player] (!frame) • !stop • !help\n!back, !left, !right, !line, !x, !under, !alt, !orbit [speed]\n!fly <preset|id>, !emote <name|id>, !copyemote [player], !stopcopyemote, !stopanim, !text <msg|off>",
 })
 
 TabReplies:CreateSection({ name = "Who it replies to" })
@@ -2478,7 +3444,7 @@ TabReplies:CreateInput({
 TabReplies:CreateButton({ name = "Clear whitelist", callback = function() Cfg.Whitelist = {}; SaveCfg(); listsText:Set(ListsSummary()) end })
 TabReplies:CreateButton({ name = "Clear blacklist", callback = function() Cfg.Blacklist = {}; SaveCfg(); listsText:Set(ListsSummary()) end })
 
--- ─── Groq API  ───
+-- ─── Groq API (Unlimited Keys + Failover) ───
 local TabProvider = Win:CreateTab({ name = "Groq API" })
 TabProvider:CreateSection({ name = "Groq Connection & Key Pool" })
 
@@ -2680,8 +3646,8 @@ TabSettings:CreateSlider({ name = "Request timeout (seconds)", increment = 5, ra
 
 TabSettings:CreateSection({ name = "Help & unload" })
 TabSettings:CreateText({
-    name = "Local commands",
-    text = "/ai on • /ai off • /ai stop • /ai follow [on|off] • /ai vc • /ai keys • /ai clear • /ai model MODEL_ID • /ai status\nK toggles the control panel.",
+    name = "Commands & shortcuts",
+    text = "!summon (!s) • !vanish (!v) • !follow (!frame) • !stop • !help (!cmds)\n!chatcmd • !weld • !multistand • !mutesound • !say • !orbit • !fly • !emote • !copyemote • !text\nK toggles the control panel.",
 })
 TabSettings:CreateButton({
     name = "Save Settings Now",
@@ -2696,7 +3662,7 @@ TabSettings:CreateButton({
         SaveMemory()
         SaveCfg()
         Runtime.Stop()
-        warn("[AI Bot] Unloaded. Execute the script again to restart.")
+        warn("[SilentAI] Unloaded. Execute the script again to restart.")
     end,
 })
 
@@ -2704,16 +3670,23 @@ TabSettings:CreateButton({
 -- INIT
 -- ═══════════════════════════════════════
 
+if Cfg.StandEnabled then
+    task.spawn(function()
+        task.wait(0.4)
+        if Runtime.alive and Cfg.StandEnabled then BuildStandRig() end
+    end)
+end
+
 UpdateBillboard(Cfg.Enabled and "ready" or "paused")
 
 task.spawn(function()
     task.wait(1.5)
     SafeNotify({
-        Title = "Groq AI Chat Bot v" .. VERSION .. " Ready",
-        Content = string.format("Bot: %s | Model: %s\nGroq Keys Loaded: %d (#%d active)\nPublic Commands: %s",
-            Cfg.BotName, Cfg.Model, #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.PublicCommands and "On" or "Off"),
+        Title = "SilentAI v" .. VERSION .. " Ready",
+        Content = string.format("Bot: %s | Model: %s\nGroq Keys: %d (#%d active) | SilentStands: %s",
+            Cfg.BotName, Cfg.Model, #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.StandEnabled and "ON" or "OFF"),
         Duration = 6,
     })
 end)
 
-warn("[Groq AI Bot v" .. VERSION .. "] Loaded. Model: " .. Cfg.Model .. " | Keys: " .. tostring(#Cfg.GroqKeys))
+warn("[SilentAI v" .. VERSION .. "] Loaded. Model: " .. Cfg.Model .. " | Keys: " .. tostring(#Cfg.GroqKeys))
