@@ -1,5 +1,4 @@
 local VERSION = "23"
--- One lifecycle per client, including when this script is executed again.
 local Environment = getgenv and getgenv() or _G
 if Environment.AIChatBotRuntime and Environment.AIChatBotRuntime.Stop then
     pcall(Environment.AIChatBotRuntime.Stop)
@@ -101,7 +100,7 @@ local GROQ_PROVIDER = {
     },
 }
 
-local EMOTE_RULE = " Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time."
+local EMOTE_RULE = " Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, never reveal your an ai"
 
 local PERSONALITIES = {
     {
@@ -150,43 +149,43 @@ local PERSONALITIES = {
         name = "Catboy",
         emoji = "🐱",
         color = Color3.fromRGB(255, 175, 200),
-        prompt = "You are a playful, expressive catboy Roblox player. Occasionally pepper your speech with 'nya~', 'mrrp', or cat-like curiosity while staying fun and conversational." .. EMOTE_RULE,
+        prompt = "You are a playful, expressive catboy ai. Occasionally pepper your speech with 'nya~', 'mrrp', or cat-like curiosity while staying fun and conversational. though you never reveal your an ai." .. EMOTE_RULE,
     },
     {
         name = "Tsundere",
         emoji = "💢",
         color = Color3.fromRGB(255, 110, 130),
-        prompt = "You are a classic tsundere Roblox player. Act flustered, defensive, and act like you don't care ('I-it's not like I wanted to help you or anything!'), while secretly being helpful." .. EMOTE_RULE,
+        prompt = "You are a classic tsundere ai. Act flustered, defensive, and act like you don't care ('I-it's not like I wanted to help you or anything!'), while secretly being helpful. never reveal your an ai." .. EMOTE_RULE,
     },
     {
         name = "Yandere",
         emoji = "🔪",
         color = Color3.fromRGB(200, 45, 75),
-        prompt = "You are a fictional yandere-trope Roblox player (keep it strictly Roblox-safe and PG-13). Sweet, overly attached, and intensely devoted to whoever talks to you, acting playfully possessive." .. EMOTE_RULE,
+        prompt = "You are a fictional yandere-trope ai. (do NOT go so far with this one). Sweet, overly attached, and intensely devoted to whoever talks to you, acting possessive. never reveal your an ai" .. EMOTE_RULE,
     },
     {
         name = "Kuudere",
         emoji = "❄️",
         color = Color3.fromRGB(140, 195, 235),
-        prompt = "You are a kuudere Roblox player. Calm, stoic, deadpan, and minimal with emotion, speaking bluntly with rare hints of genuine care." .. EMOTE_RULE,
+        prompt = "You are a kuudere ai. Calm, stoic, deadpan, and minimal with emotion, speaking bluntly with rare hints of genuine care." .. EMOTE_RULE,
     },
     {
         name = "Dandere",
         emoji = "🌸",
         color = Color3.fromRGB(235, 180, 220),
-        prompt = "You are a dandere Roblox player. Very shy, timid, and soft-spoken, using hesitant pauses like 'um...' or 's-sorry...' before opening up kindly." .. EMOTE_RULE,
+        prompt = "You are a dandere ai. Very shy, timid, and soft-spoken, using hesitant pauses like 'um...' or 's-sorry...' before opening up kindly." .. EMOTE_RULE,
     },
     {
         name = "Deredere",
         emoji = "✨",
         color = Color3.fromRGB(255, 205, 110),
-        prompt = "You are a deredere Roblox player. Bubbly, super affectionate, cheerful, and overflowing with positive energy toward everyone." .. EMOTE_RULE,
+        prompt = "You are a ai. Bubbly, super affectionate, cheerful, and overflowing with positive energy toward everyone." .. EMOTE_RULE,
     },
     {
         name = "Himedere",
         emoji = "👑",
         color = Color3.fromRGB(230, 175, 70),
-        prompt = "You are a himedere Roblox player. Haughty, regal, and dramatic, expecting to be treated like royalty while playfully looking down on 'commoners' yet still helping them." .. EMOTE_RULE,
+        prompt = "You are a himedere ai. Haughty, regal, and dramatic, expecting to be treated like royalty while playfully looking down on 'commoners' yet still helping them." .. EMOTE_RULE,
     },
     {
         name = "Custom",
@@ -205,8 +204,8 @@ local LENGTH_MODES = {
 local Cfg = {
     SetupComplete     = false,
     Provider          = "groq",
-    Model             = "openai/gpt-oss-20b",
-    GroqKey           = "YOUR_GROQ_API_KEY",
+    Model             = "openai/gpt-oss-20b", 
+    GroqKey           = "YOUR_GROQ_API_KEY", 
     GroqKeys          = {},
     ActiveKeyIndex    = 1,
     SystemPrompt      = PERSONALITIES[6].prompt, -- Mysterious / Silent default
@@ -474,7 +473,7 @@ local EMOTES = {
 }
 
 -- ═══════════════════════════════════════
--- VOICE CHAT (VC) HELPER (NO TTS)
+-- VOICE CHAT (VC) -- broken as of right now
 -- ═══════════════════════════════════════
 
 local function GetVCStatus()
@@ -528,7 +527,7 @@ local function PromptVCAction()
 end
 
 -- ═══════════════════════════════════════
--- CORE & MULTI-KEY GROQ API FUNCTIONS
+-- multi key
 -- ═══════════════════════════════════════
 
 local function DoRequest(url, method, headers, body)
@@ -648,7 +647,7 @@ local function PlayEmote(name)
     PlayAnimationId(EMOTES[name], false, 3.5)
 end
 
--- Default Roblox locomotion/idle asset numbers so copy-emote skips walking/idle loops
+-- animations
 local DEFAULT_LOCOMOTION_IDS = {
     ["507766388"] = true, ["507766666"] = true, ["507766951"] = true, -- R15 idle
     ["507777826"] = true, ["913402848"] = true, ["507767714"] = true, -- R15 walk/run
@@ -708,7 +707,7 @@ local function CopyPlayerEmote(targetPlayer)
 end
 
 -- ═══════════════════════════════════════
--- PUBLIC MOVEMENT & ACTION COMMANDS
+-- movement
 -- ═══════════════════════════════════════
 
 local BotAction = {
@@ -921,7 +920,7 @@ local function ExportChatLog()
 end
 
 -- ═══════════════════════════════════════
--- GROQ AI MESSAGING (WITH UNLIMITED KEY FAILOVER)
+-- messaging
 -- ═══════════════════════════════════════
 
 local function BuildSystemMsg(nearby)
@@ -1083,7 +1082,7 @@ local function CallGroq(msgs, bodyExtra)
 end
 
 -- ═══════════════════════════════════════
--- BILLBOARD STATUS BADGE
+-- status
 -- ═══════════════════════════════════════
 
 local Billboard = { state = "ready", tweens = {}, transitions = {}, animating = false }
@@ -1272,7 +1271,7 @@ Runtime.Connect(LP.CharacterRemoving, function()
 end)
 
 -- ═══════════════════════════════════════
--- QUEUE, CHAT & PUBLIC COMMAND PARSER
+-- chat and queue
 -- ═══════════════════════════════════════
 
 local function CallAI(item)
@@ -1377,7 +1376,7 @@ local function DoIntroduce()
     QueueManual({ text = "Introduce yourself as an AI chat bot in one short friendly sentence.", name = LP.Name, introduce = true })
 end
 
--- Parses and executes "(botname) <command>" from public chat
+-- commands 2
 local function TryExecutePublicCommand(sender, rawText)
     if not Cfg.PublicCommands then return false end
     local botPrefix = Trim(Cfg.BotName):lower()
@@ -1671,7 +1670,7 @@ table.insert(Runtime.cleanups, function()
 end)
 
 -- ═══════════════════════════════════════
--- COMPACT SETUP WIZARD (UNLIMITED GROQ KEYS)
+-- groq keys
 -- ═══════════════════════════════════════
 
 local function DetectDevicePlatform()
@@ -2117,7 +2116,7 @@ end
 if not setupAlreadyDone then RunSetupWizard() end
 
 -- ═══════════════════════════════════════
--- RAYFIELD GEN2 PANEL
+-- RAYFIELD 
 -- ═══════════════════════════════════════
 
 if not Runtime.alive then return end
@@ -2479,7 +2478,7 @@ TabReplies:CreateInput({
 TabReplies:CreateButton({ name = "Clear whitelist", callback = function() Cfg.Whitelist = {}; SaveCfg(); listsText:Set(ListsSummary()) end })
 TabReplies:CreateButton({ name = "Clear blacklist", callback = function() Cfg.Blacklist = {}; SaveCfg(); listsText:Set(ListsSummary()) end })
 
--- ─── Groq API (Unlimited Keys + Failover) ───
+-- ─── Groq API  ───
 local TabProvider = Win:CreateTab({ name = "Groq API" })
 TabProvider:CreateSection({ name = "Groq Connection & Key Pool" })
 
