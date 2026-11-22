@@ -1,4 +1,4 @@
-local VERSION = "21"
+local VERSION = "23"
 -- One lifecycle per client, including when this script is executed again.
 local Environment = getgenv and getgenv() or _G
 if Environment.AIChatBotRuntime and Environment.AIChatBotRuntime.Stop then
@@ -101,49 +101,92 @@ local GROQ_PROVIDER = {
     },
 }
 
--- Original Personality Prompts Restored
+local EMOTE_RULE = " Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time."
+
 local PERSONALITIES = {
     {
         name = "Friendly Gamer",
         emoji = "😊",
         color = Color3.fromRGB(80, 200, 120),
-        prompt = [[You are a fun, friendly Roblox player who loves games. Keep replies SHORT (1-2 sentences). Be positive and casual. You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+        prompt = "You are a fun, friendly Roblox player who loves games. Be positive and casual." .. EMOTE_RULE,
     },
     {
         name = "Dramatic",
         emoji = "🎭",
         color = Color3.fromRGB(220, 100, 100),
-        prompt = [[You are a hilariously overdramatic Roblox player. Everything is the most important thing ever. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+        prompt = "You are a hilariously overdramatic Roblox player. Everything is the most important thing ever." .. EMOTE_RULE,
     },
     {
         name = "Sarcastic",
         emoji = "😏",
         color = Color3.fromRGB(200, 200, 80),
-        prompt = [[You are a witty, sarcastic Roblox player. Dry humor, clever comebacks but never mean. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+        prompt = "You are a witty, sarcastic Roblox player. Dry humor, clever comebacks but never mean." .. EMOTE_RULE,
     },
     {
         name = "Chill",
         emoji = "😎",
         color = Color3.fromRGB(100, 200, 200),
-        prompt = [[You are a super chill, laid-back Roblox player. Nothing phases you. Very casual and relaxed. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+        prompt = "You are a super chill, laid-back Roblox player. Nothing phases you. Very casual and relaxed." .. EMOTE_RULE,
     },
     {
         name = "Competitive",
         emoji = "🔥",
         color = Color3.fromRGB(255, 140, 60),
-        prompt = [[You are a hyper-competitive Roblox player. Everything is a challenge. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+        prompt = "You are a hyper-competitive Roblox player. Everything is a challenge." .. EMOTE_RULE,
     },
     {
         name = "Mysterious",
         emoji = "🌙",
         color = Color3.fromRGB(120, 80, 200),
-        prompt = [[You are a mysterious, enigmatic Roblox player. You speak with an air of mystery and occasionally use metaphors. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+        prompt = "You are a mysterious, enigmatic Roblox player. You speak with an air of mystery and occasionally use metaphors." .. EMOTE_RULE,
     },
     {
         name = "Wholesome",
         emoji = "💖",
         color = Color3.fromRGB(255, 130, 180),
-        prompt = [[You are the most wholesome, kind, and encouraging Roblox player. You compliment others and spread positivity. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+        prompt = "You are the most wholesome, kind, and encouraging Roblox player. You compliment others and spread positivity." .. EMOTE_RULE,
+    },
+    {
+        name = "Catboy",
+        emoji = "🐱",
+        color = Color3.fromRGB(255, 175, 200),
+        prompt = "You are a playful, expressive catboy Roblox player. Occasionally pepper your speech with 'nya~', 'mrrp', or cat-like curiosity while staying fun and conversational." .. EMOTE_RULE,
+    },
+    {
+        name = "Tsundere",
+        emoji = "💢",
+        color = Color3.fromRGB(255, 110, 130),
+        prompt = "You are a classic tsundere Roblox player. Act flustered, defensive, and act like you don't care ('I-it's not like I wanted to help you or anything!'), while secretly being helpful." .. EMOTE_RULE,
+    },
+    {
+        name = "Yandere",
+        emoji = "🔪",
+        color = Color3.fromRGB(200, 45, 75),
+        prompt = "You are a fictional yandere-trope Roblox player (keep it strictly Roblox-safe and PG-13). Sweet, overly attached, and intensely devoted to whoever talks to you, acting playfully possessive." .. EMOTE_RULE,
+    },
+    {
+        name = "Kuudere",
+        emoji = "❄️",
+        color = Color3.fromRGB(140, 195, 235),
+        prompt = "You are a kuudere Roblox player. Calm, stoic, deadpan, and minimal with emotion, speaking bluntly with rare hints of genuine care." .. EMOTE_RULE,
+    },
+    {
+        name = "Dandere",
+        emoji = "🌸",
+        color = Color3.fromRGB(235, 180, 220),
+        prompt = "You are a dandere Roblox player. Very shy, timid, and soft-spoken, using hesitant pauses like 'um...' or 's-sorry...' before opening up kindly." .. EMOTE_RULE,
+    },
+    {
+        name = "Deredere",
+        emoji = "✨",
+        color = Color3.fromRGB(255, 205, 110),
+        prompt = "You are a deredere Roblox player. Bubbly, super affectionate, cheerful, and overflowing with positive energy toward everyone." .. EMOTE_RULE,
+    },
+    {
+        name = "Himedere",
+        emoji = "👑",
+        color = Color3.fromRGB(230, 175, 70),
+        prompt = "You are a himedere Roblox player. Haughty, regal, and dramatic, expecting to be treated like royalty while playfully looking down on 'commoners' yet still helping them." .. EMOTE_RULE,
     },
     {
         name = "Custom",
@@ -164,13 +207,16 @@ local Cfg = {
     Provider          = "groq",
     Model             = "openai/gpt-oss-20b",
     GroqKey           = "YOUR_GROQ_API_KEY",
-    SystemPrompt      = PERSONALITIES[1].prompt,
-    BotName           = "AIBot",
+    GroqKeys          = {},
+    ActiveKeyIndex    = 1,
+    SystemPrompt      = PERSONALITIES[6].prompt, -- Mysterious / Silent default
+    BotName           = "silentai",
     ProximityRadius   = 30,
     Cooldown          = 4,
     MaxTokens         = 120,
     Temperature       = 0.85,
     Enabled           = true,
+    PublicCommands    = true,
     RespondToAll      = false,
     RespondToNameOnly = false,
     TriggerKeywords   = "",
@@ -200,9 +246,9 @@ local Cfg = {
 
 local SAVE_FILE = "aichatbot_groq_cfg_v1.json"
 local SAVE_KEYS = {
-    "SetupComplete", "Provider", "Model", "GroqKey",
+    "SetupComplete", "Provider", "Model", "GroqKey", "GroqKeys", "ActiveKeyIndex",
     "SystemPrompt", "BotName", "ProximityRadius", "Cooldown",
-    "MaxTokens", "Temperature", "Enabled", "RespondToAll",
+    "MaxTokens", "Temperature", "Enabled", "PublicCommands", "RespondToAll",
     "RespondToNameOnly", "TriggerKeywords", "WhisperMode", "ThinkDelay",
     "AutoGreet", "AutoGreetCooldown", "AutoFollow", "FollowDistance",
     "VCSupport", "VCIncludeContext", "LengthMode",
@@ -210,6 +256,54 @@ local SAVE_KEYS = {
     "Language", "SetupStyle", "RememberHistory", "SaveAPIKeys",
     "QueueLimit", "QueueMaxAge", "GlobalCooldown", "RequestTimeout", "MemoryLimit",
 }
+
+local function ParseKeyList(rawText)
+    local parsed, seen = {}, {}
+    local function push(k)
+        if type(k) ~= "string" then return end
+        local clean = Trim(k)
+        if clean ~= "" and not clean:match("^YOUR_") and not seen[clean] then
+            seen[clean] = true
+            table.insert(parsed, clean)
+        end
+    end
+    if type(rawText) == "table" then
+        for _, item in ipairs(rawText) do push(item) end
+    elseif type(rawText) == "string" then
+        for token in rawText:gmatch("[^,%s\r\n;]+") do push(token) end
+    end
+    return parsed
+end
+
+local function MaskKey(key)
+    key = Trim(key)
+    if #key <= 8 then return string.rep("*", #key) end
+    return key:sub(1, 6) .. "..." .. key:sub(-4)
+end
+
+local function SyncKeyPool()
+    local merged, seen = {}, {}
+    local function add(k)
+        if type(k) ~= "string" then return end
+        local clean = Trim(k)
+        if clean ~= "" and not clean:match("^YOUR_") and not seen[clean] then
+            seen[clean] = true
+            table.insert(merged, clean)
+        end
+    end
+    if type(Cfg.GroqKeys) == "table" then
+        for _, k in ipairs(Cfg.GroqKeys) do add(k) end
+    end
+    add(Cfg.GroqKey)
+    Cfg.GroqKeys = merged
+    if #Cfg.GroqKeys > 0 then
+        Cfg.ActiveKeyIndex = math.clamp(math.floor(tonumber(Cfg.ActiveKeyIndex) or 1), 1, #Cfg.GroqKeys)
+        Cfg.GroqKey = Cfg.GroqKeys[Cfg.ActiveKeyIndex]
+    else
+        Cfg.ActiveKeyIndex = 1
+        Cfg.GroqKey = "YOUR_GROQ_API_KEY"
+    end
+end
 
 local CONFIG_DEFAULTS = table.clone(Cfg)
 local function NormalizeCfg()
@@ -221,6 +315,7 @@ local function NormalizeCfg()
         end
     end
     Cfg.Provider = "groq"
+    SyncKeyPool()
     local bounds = {
         ProximityRadius   = {5, 300},
         Cooldown          = {1, 60},
@@ -255,7 +350,7 @@ local function NormalizeCfg()
         end
         Cfg[key] = clean
     end
-    Cfg.BotName = Truncate(Trim(Cfg.BotName) ~= "" and Trim(Cfg.BotName) or "AIBot", 32)
+    Cfg.BotName = Truncate(Trim(Cfg.BotName) ~= "" and Trim(Cfg.BotName) or "silentai", 32)
     Cfg.ChatPrefix = Truncate(Cfg.ChatPrefix, 40)
     Cfg.TriggerKeywords = Truncate(Trim(Cfg.TriggerKeywords), 240)
     if Cfg.SetupStyle ~= "Windows" and Cfg.SetupStyle ~= "macOS" then Cfg.SetupStyle = "Auto" end
@@ -285,7 +380,7 @@ local function SaveCfg()
     NormalizeCfg()
     local data = {}
     for _, key in ipairs(SAVE_KEYS) do
-        if Cfg.SaveAPIKeys or not key:match("Key$") then data[key] = Cfg[key] end
+        if Cfg.SaveAPIKeys or not key:match("Keys?$") then data[key] = Cfg[key] end
     end
     return WriteJSON(SAVE_FILE, data)
 end
@@ -295,8 +390,7 @@ local function LoadCfg()
     if not data then return false end
     for _, key in ipairs(SAVE_KEYS) do if data[key] ~= nil then Cfg[key] = data[key] end end
     NormalizeCfg()
-    local key = Trim(Cfg.GroqKey)
-    return Cfg.SetupComplete and key ~= "" and not key:match("^YOUR_")
+    return Cfg.SetupComplete and #Cfg.GroqKeys > 0
 end
 
 local setupAlreadyDone = LoadCfg()
@@ -434,7 +528,7 @@ local function PromptVCAction()
 end
 
 -- ═══════════════════════════════════════
--- CORE & GROQ API FUNCTIONS
+-- CORE & MULTI-KEY GROQ API FUNCTIONS
 -- ═══════════════════════════════════════
 
 local function DoRequest(url, method, headers, body)
@@ -485,51 +579,217 @@ local function ParseModelList(data)
     return models
 end
 
-local function DiscoverGroqModels(apiKey)
-    local key = Trim(apiKey)
-    if key == "" or key:match("^YOUR_") then
-        return nil, "Enter a valid Groq API key first."
+local function DiscoverGroqModels(apiKeysInput)
+    local keys = ParseKeyList(apiKeysInput)
+    if #keys == 0 then
+        return nil, "Enter at least one valid Groq API key first."
     end
-    local response, networkError = DoRequest(
-        "https://api.groq.com/openai/v1/models",
-        "GET",
-        {
-            ["Accept"] = "application/json",
-            ["Authorization"] = "Bearer " .. key,
+    local lastErr = "Groq model discovery failed."
+    for _, key in ipairs(keys) do
+        local response, networkError = DoRequest(
+            "https://api.groq.com/openai/v1/models",
+            "GET",
+            {
+                ["Accept"] = "application/json",
+                ["Authorization"] = "Bearer " .. key,
+            }
+        )
+        if response and response.StatusCode >= 200 and response.StatusCode < 300 then
+            local ok, data = pcall(HttpService.JSONDecode, HttpService, response.Body or "")
+            if not ok then return nil, "Groq model endpoint returned invalid JSON." end
+            return ParseModelList(data)
+        end
+        local hints = {
+            [401] = "Invalid Groq API key.",
+            [403] = "Access to Groq models was denied.",
+            [429] = "Rate limited by Groq.",
         }
-    )
-    if not response then return nil, networkError or "Groq model discovery failed." end
-    if response.StatusCode >= 200 and response.StatusCode < 300 then
-        local ok, data = pcall(HttpService.JSONDecode, HttpService, response.Body or "")
-        if not ok then return nil, "Groq model endpoint returned invalid JSON." end
-        return ParseModelList(data)
+        lastErr = response and (hints[response.StatusCode] or ("Groq model discovery failed (HTTP " .. tostring(response.StatusCode) .. ").")) or (networkError or lastErr)
     end
-    local hints = {
-        [401] = "Invalid Groq API key.",
-        [403] = "Access to Groq models was denied.",
-        [429] = "Rate limited by Groq. Try again shortly.",
-    }
-    return nil, hints[response.StatusCode] or ("Groq model discovery failed (HTTP " .. tostring(response.StatusCode) .. ").")
+    return nil, lastErr
 end
 
-local function PlayEmote(name)
-    if not Runtime.alive or not EMOTES[name] then return end
+local function StopEmote()
+    if Runtime.emoteTrack then
+        pcall(function()
+            Runtime.emoteTrack:Stop()
+            Runtime.emoteTrack:Destroy()
+        end)
+        Runtime.emoteTrack = nil
+    end
+end
+
+local function PlayAnimationId(animId, looped, duration)
+    if not Runtime.alive or type(animId) ~= "string" or animId == "" then return false end
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-    if not animator then return end
+    if not animator then return false end
     local animation = Instance.new("Animation")
-    animation.AnimationId = EMOTES[name]
+    animation.AnimationId = animId
     local ok, track = pcall(function() return animator:LoadAnimation(animation) end)
     animation:Destroy()
-    if not ok then return end
-    if Runtime.emoteTrack then pcall(function() Runtime.emoteTrack:Stop(); Runtime.emoteTrack:Destroy() end) end
+    if not ok or not track then return false end
+    StopEmote()
     Runtime.emoteTrack = track
+    pcall(function() track.Priority = Enum.AnimationPriority.Action end)
+    if looped ~= nil then pcall(function() track.Looped = looped end) end
     track:Play()
-    task.delay(3.5, function()
-        pcall(function() track:Stop(); track:Destroy() end)
-        if Runtime.emoteTrack == track then Runtime.emoteTrack = nil end
-    end)
+    if duration and duration > 0 then
+        task.delay(duration, function()
+            if Runtime.emoteTrack == track then StopEmote() end
+        end)
+    end
+    return true
+end
+
+local function PlayEmote(name)
+    if not EMOTES[name] then return end
+    PlayAnimationId(EMOTES[name], false, 3.5)
+end
+
+-- Default Roblox locomotion/idle asset numbers so copy-emote skips walking/idle loops
+local DEFAULT_LOCOMOTION_IDS = {
+    ["507766388"] = true, ["507766666"] = true, ["507766951"] = true, -- R15 idle
+    ["507777826"] = true, ["913402848"] = true, ["507767714"] = true, -- R15 walk/run
+    ["507765000"] = true, ["507767968"] = true, ["507765644"] = true, -- R15 jump/fall/climb
+    ["507784897"] = true, ["507785072"] = true, ["2506281703"] = true, -- R15 swim/sit
+    ["180435571"] = true, ["180435792"] = true, ["180426354"] = true, -- R6 idle/walk
+    ["125750702"] = true, ["180436148"] = true, ["180436334"] = true, -- R6 jump/fall/climb
+    ["178130996"] = true, ["180435342"] = true, -- R6 sit/swim
+}
+
+local function CopyPlayerEmote(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then
+        return false, "Target player has no character loaded."
+    end
+    local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        return false, "Could not inspect player animations."
+    end
+    local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+    if not ok or type(tracks) ~= "table" or #tracks == 0 then
+        return false, targetPlayer.DisplayName .. " isn't playing any animations."
+    end
+
+    local chosenTrack = nil
+    local fallbackTrack = nil
+    for _, tr in ipairs(tracks) do
+        local anim = tr.Animation
+        local id = anim and anim.AnimationId or ""
+        local numId = id:match("(%d+)")
+        if id ~= "" and not id:find("0$") then
+            if numId and not DEFAULT_LOCOMOTION_IDS[numId] then
+                if tr.Priority == Enum.AnimationPriority.Action
+                    or tr.Priority == Enum.AnimationPriority.Action2
+                    or tr.Priority == Enum.AnimationPriority.Action3
+                    or tr.Priority == Enum.AnimationPriority.Action4
+                    or not chosenTrack then
+                    chosenTrack = tr
+                end
+            elseif not fallbackTrack then
+                fallbackTrack = tr
+            end
+        end
+    end
+
+    local targetTrack = chosenTrack or fallbackTrack
+    if not targetTrack or not targetTrack.Animation then
+        return false, "No copyable emote found on " .. targetPlayer.DisplayName .. "."
+    end
+
+    local animId = targetTrack.Animation.AnimationId
+    local started = PlayAnimationId(animId, targetTrack.Looped, targetTrack.Looped and 20 or 6)
+    if not started then
+        return false, "Failed to load animation (" .. tostring(animId) .. ")."
+    end
+    return true, "Copied emote from " .. targetPlayer.DisplayName .. "!"
+end
+
+-- ═══════════════════════════════════════
+-- PUBLIC MOVEMENT & ACTION COMMANDS
+-- ═══════════════════════════════════════
+
+local BotAction = {
+    mode = "none",       -- "none" | "follow" | "goto_pos" | "goto_player" | "goto_part"
+    targetPlayer = nil,
+    targetPos = nil,
+    targetPart = nil,
+    targetLabel = "",
+}
+
+local function GetInstanceWorldPos(inst)
+    if not inst or not inst.Parent then return nil end
+    if inst:IsA("BasePart") then return inst.Position end
+    if inst:IsA("Attachment") then return inst.WorldPosition end
+    if inst:IsA("Model") then
+        if inst.PrimaryPart then return inst.PrimaryPart.Position end
+        local ok, cf = pcall(function() return inst:GetBoundingBox() end)
+        if ok and cf then return cf.Position end
+        local part = inst:FindFirstChildWhichIsA("BasePart", true)
+        if part then return part.Position end
+    end
+    return nil
+end
+
+local function FindPlayerByNameOrDisplay(query)
+    local q = Trim(query):gsub("^@", ""):lower()
+    if q == "" then return nil end
+    local bestPartial = nil
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP then
+            local uname = p.Name:lower()
+            local dname = p.DisplayName:lower()
+            if uname == q or dname == q then
+                return p
+            end
+            if not bestPartial and (uname:find(q, 1, true) or dname:find(q, 1, true)) then
+                bestPartial = p
+            end
+        end
+    end
+    return bestPartial
+end
+
+local function FindWorkspaceTarget(query)
+    local q = Trim(query):lower()
+    if q == "" then return nil end
+    local myChar = LP.Character
+    local exactMatch, partialMatch = nil, nil
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        if (not myChar or not inst:IsDescendantOf(myChar))
+            and (inst:IsA("BasePart") or inst:IsA("Model") or inst:IsA("Attachment")) then
+            local nameLower = inst.Name:lower()
+            if nameLower == q then
+                if GetInstanceWorldPos(inst) then
+                    exactMatch = inst
+                    break
+                end
+            elseif not partialMatch and nameLower:find(q, 1, true) then
+                if GetInstanceWorldPos(inst) then
+                    partialMatch = inst
+                end
+            end
+        end
+    end
+    return exactMatch or partialMatch
+end
+
+local function StopBotMovement(alsoStopEmote)
+    BotAction.mode = "none"
+    BotAction.targetPlayer = nil
+    BotAction.targetPos = nil
+    BotAction.targetPart = nil
+    BotAction.targetLabel = ""
+    Cfg.AutoFollow = false
+    if alsoStopEmote then StopEmote() end
+    local char = LP.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if humanoid and hrp then
+        pcall(function() humanoid:MoveTo(hrp.Position) end)
+    end
 end
 
 local function ParseAIText(raw)
@@ -661,7 +921,7 @@ local function ExportChatLog()
 end
 
 -- ═══════════════════════════════════════
--- GROQ AI MESSAGING
+-- GROQ AI MESSAGING (WITH UNLIMITED KEY FAILOVER)
 -- ═══════════════════════════════════════
 
 local function BuildSystemMsg(nearby)
@@ -674,6 +934,9 @@ local function BuildSystemMsg(nearby)
         "Your Roblox username: " .. LP.Name .. (LP.DisplayName ~= LP.Name and " (display: " .. LP.DisplayName .. ")" or ""),
         "Local operator: " .. BOT_OWNER .. ". You are an AI chat bot; be honest about that if asked.",
     }
+    if BotAction.mode ~= "none" then
+        table.insert(ctx, "Current movement action: " .. BotAction.mode .. (BotAction.targetLabel ~= "" and (" -> " .. BotAction.targetLabel) or ""))
+    end
     if Cfg.VCSupport and Cfg.VCIncludeContext then
         local vcDesc = select(1, GetVCStatus())
         table.insert(ctx, "Voice Chat status: " .. vcDesc)
@@ -709,15 +972,13 @@ local function BuildMsgs(userMsg, nearby, extraNote, history)
     return msgs
 end
 
-local MAX_RETRIES = 3
-local RETRY_DELAY = 2
 local ERROR_HINTS = {
     [400] = "Bad request.",
     [401] = "Invalid Groq API key.",
     [402] = "Account/credits issue.",
     [403] = "Forbidden.",
     [404] = "Groq model not found.",
-    [429] = "Rate limited by Groq - raise cooldown.",
+    [429] = "Rate limited by Groq.",
     [500] = "Groq server overloaded.",
     [502] = "Gateway error.",
     [503] = "Groq service down.",
@@ -729,9 +990,10 @@ local function HandleAPIError(code, body)
     local message = type(errorValue) == "table" and errorValue.message or type(errorValue) == "string" and errorValue
     if not message and ok and type(data) == "table" then message = data.message end
     local detail = type(message) == "string" and message or ""
-    local secret = Cfg.GroqKey
-    if type(secret) == "string" and #secret >= 6 and not secret:match("^YOUR_") then
-        detail = detail:gsub(secret:gsub("([^%w])", "%%%1"), "[redacted]")
+    for _, secret in ipairs(Cfg.GroqKeys) do
+        if type(secret) == "string" and #secret >= 6 then
+            detail = detail:gsub(secret:gsub("([^%w])", "%%%1"), "[redacted]")
+        end
     end
     detail = Truncate(detail:gsub("[Bb]earer%s+[%w%-%._]+", "Bearer [redacted]"), 350)
     local hint = ERROR_HINTS[code] or ("HTTP " .. tostring(code))
@@ -739,10 +1001,12 @@ local function HandleAPIError(code, body)
 end
 
 local function CallGroq(msgs, bodyExtra)
-    local key = Trim(Cfg.GroqKey)
-    if key == "" or key:match("^YOUR_") then
-        return nil, "Enter your Groq API key in setup or the Groq API tab."
+    SyncKeyPool()
+    local totalKeys = #Cfg.GroqKeys
+    if totalKeys == 0 then
+        return nil, "Enter at least one Groq API key in setup or the Groq API tab."
     end
+
     Runtime.stats.requests = Runtime.stats.requests + 1
     local b = {
         model = Cfg.Model,
@@ -757,43 +1021,65 @@ local function CallGroq(msgs, bodyExtra)
     local encoded, body = pcall(HttpService.JSONEncode, HttpService, b)
     if not encoded then return nil, "Could not encode Groq request." end
 
-    local headers = {
-        ["Content-Type"] = "application/json",
-        ["Authorization"] = "Bearer " .. key,
-    }
     local generation = Runtime.generation
     local lastError = "No response"
+    local startIndex = Cfg.ActiveKeyIndex
+    local lastRetryAfter = 10
 
-    for attempt = 1, MAX_RETRIES do
+    for offset = 0, totalKeys - 1 do
         if not Runtime.alive or generation ~= Runtime.generation then return nil, "Cancelled." end
+        local keyIndex = ((startIndex - 1 + offset) % totalKeys) + 1
+        local key = Cfg.GroqKeys[keyIndex]
+        Cfg.ActiveKeyIndex = keyIndex
+        Cfg.GroqKey = key
+
+        local headers = {
+            ["Content-Type"] = "application/json",
+            ["Authorization"] = "Bearer " .. key,
+        }
+
         local res, networkError = DoRequest("https://api.groq.com/openai/v1/chat/completions", "POST", headers, body)
         if not Runtime.alive or generation ~= Runtime.generation then return nil, "Cancelled." end
+
         if res and res.StatusCode >= 200 and res.StatusCode < 300 then
             local ok, data = pcall(HttpService.JSONDecode, HttpService, res.Body or "")
-            if not ok or type(data) ~= "table" then return nil, "Groq returned invalid JSON." end
-            local choice = type(data.choices) == "table" and data.choices[1]
-            local message = type(choice) == "table" and choice.message
-            local content = type(message) == "table" and message.content
-            if type(content) ~= "string" or Trim(content) == "" then
-                return nil, "Groq returned no usable text."
+            if ok and type(data) == "table" then
+                local choice = type(data.choices) == "table" and data.choices[1]
+                local message = type(choice) == "table" and choice.message
+                local content = type(message) == "table" and message.content
+                if type(content) == "string" and Trim(content) ~= "" then
+                    return content
+                else
+                    lastError = string.format("[Key #%d] Groq returned no usable text.", keyIndex)
+                end
+            else
+                lastError = string.format("[Key #%d] Groq returned invalid JSON.", keyIndex)
             end
-            return content
+        else
+            local errText = res and HandleAPIError(res.StatusCode, res.Body) or networkError or "No response"
+            lastError = string.format("[Key #%d/%d] %s", keyIndex, totalKeys, errText)
+            if res and res.StatusCode == 429 then
+                local responseHeaders = res.Headers or res.headers or {}
+                local retryAfter = tonumber(responseHeaders["Retry-After"] or responseHeaders["retry-after"])
+                if retryAfter then lastRetryAfter = math.clamp(retryAfter, 1, 120) end
+            end
         end
-        lastError = res and HandleAPIError(res.StatusCode, res.Body) or networkError or "No response"
-        if res and res.StatusCode == 429 then
-            local responseHeaders = res.Headers or res.headers or {}
-            local retryAfter = tonumber(responseHeaders["Retry-After"] or responseHeaders["retry-after"]) or 15
-            Runtime.nextRequestAt = os.clock() + math.clamp(retryAfter, 1, 120)
-            return nil, lastError
-        end
-        if res and res.StatusCode < 500 and res.StatusCode ~= 408 then return nil, lastError end
-        if networkError == "Request timed out." then return nil, networkError end
-        if attempt < MAX_RETRIES then
-            local deadline = os.clock() + RETRY_DELAY * 2 ^ (attempt - 1)
-            repeat task.wait(0.1) until os.clock() >= deadline or not Runtime.alive or generation ~= Runtime.generation
+
+        if totalKeys > 1 then
+            local nextIndex = (keyIndex % totalKeys) + 1
+            Cfg.ActiveKeyIndex = nextIndex
+            Cfg.GroqKey = Cfg.GroqKeys[nextIndex]
+            warn(string.format("[AI Bot] %s -> Switching to Key #%d (%s)", lastError, nextIndex, MaskKey(Cfg.GroqKey)))
+            task.wait(0.15)
         end
     end
-    return nil, lastError
+
+    if lastError:find("Rate limited", 1, true) then
+        Runtime.nextRequestAt = os.clock() + lastRetryAfter
+    end
+    return nil, totalKeys > 1
+        and ("All " .. tostring(totalKeys) .. " Groq keys failed. Last: " .. lastError)
+        or lastError
 end
 
 -- ═══════════════════════════════════════
@@ -986,7 +1272,7 @@ Runtime.Connect(LP.CharacterRemoving, function()
 end)
 
 -- ═══════════════════════════════════════
--- QUEUE, CHAT & LOOPS
+-- QUEUE, CHAT & PUBLIC COMMAND PARSER
 -- ═══════════════════════════════════════
 
 local function CallAI(item)
@@ -1044,7 +1330,7 @@ local function ProcessQueue()
             while Runtime.alive and valid() and os.clock() < Runtime.nextRequestAt do task.wait(0.1) end
             if Runtime.alive and valid() then
                 local ok, result, err = pcall(CallAI, item)
-                if not ok then result, err = nil, "Unexpected response error; check your Groq key and model." end
+                if not ok then result, err = nil, "Unexpected response error; check your Groq keys and model." end
                 Runtime.nextRequestAt = math.max(Runtime.nextRequestAt, os.clock() + Cfg.GlobalCooldown)
                 if item.generation == Runtime.generation and Runtime.alive then
                     if not result then
@@ -1091,6 +1377,102 @@ local function DoIntroduce()
     QueueManual({ text = "Introduce yourself as an AI chat bot in one short friendly sentence.", name = LP.Name, introduce = true })
 end
 
+-- Parses and executes "(botname) <command>" from public chat
+local function TryExecutePublicCommand(sender, rawText)
+    if not Cfg.PublicCommands then return false end
+    local botPrefix = Trim(Cfg.BotName):lower()
+    if botPrefix == "" then return false end
+
+    local cleaned = Trim(rawText)
+    if cleaned:sub(1, #botPrefix):lower() ~= botPrefix then return false end
+    -- Ensure bot name is followed by space or punctuation
+    local nextChar = cleaned:sub(#botPrefix + 1, #botPrefix + 1)
+    if nextChar ~= "" and not nextChar:match("[%s,:;!%.%-]") then return false end
+
+    local rest = Trim(cleaned:sub(#botPrefix + 1):gsub("^[%s,:;!%.%-]+", ""))
+    if rest == "" then return false end
+    local lowerRest = rest:lower():gsub("[%.!%?]+$", "")
+
+    -- 1. "(name) come here"
+    if lowerRest == "come here" or lowerRest == "come" then
+        local hrp = sender.Character and sender.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            SafeNotify({ Title = "Command failed", Content = sender.DisplayName .. " has no character position." })
+            return true
+        end
+        Cfg.AutoFollow = false
+        BotAction.mode = "goto_pos"
+        BotAction.targetPlayer = nil
+        BotAction.targetPart = nil
+        BotAction.targetPos = hrp.Position
+        BotAction.targetLabel = sender.DisplayName .. "'s spot"
+        SafeNotify({ Title = "Public Command", Content = sender.DisplayName .. ": Come here" })
+        return true
+    end
+
+    -- 2. "(name) follow me"
+    if lowerRest == "follow me" or lowerRest == "follow" then
+        Cfg.AutoFollow = false
+        BotAction.mode = "follow"
+        BotAction.targetPlayer = sender
+        BotAction.targetPos = nil
+        BotAction.targetPart = nil
+        BotAction.targetLabel = sender.DisplayName
+        SafeNotify({ Title = "Public Command", Content = "Following " .. sender.DisplayName .. " until '" .. Cfg.BotName .. " stop'" })
+        return true
+    end
+
+    -- 3. "(name) stop"
+    if lowerRest == "stop" or lowerRest == "stop following" then
+        StopBotMovement(true)
+        SafeNotify({ Title = "Public Command", Content = "Stopped by " .. sender.DisplayName })
+        return true
+    end
+
+    -- 4. "(name) copy emote"
+    if lowerRest == "copy emote" or lowerRest == "copy animation" or lowerRest == "copy anim" then
+        local ok, msg = CopyPlayerEmote(sender)
+        SafeNotify({ Title = ok and "Copied Emote" or "Copy Emote", Content = msg })
+        return true
+    end
+
+    -- 5. "(name) go to (player or workspace item)"
+    local goTargetRaw = rest:match("^[Gg][Oo]%s+[Tt][Oo]%s+(.+)$") or rest:match("^[Gg][Oo][Tt][Oo]%s+(.+)$")
+    if goTargetRaw then
+        local targetQuery = Trim(goTargetRaw:gsub("[%.!%?]+$", ""))
+        if targetQuery == "" then return false end
+
+        local targetPlayer = FindPlayerByNameOrDisplay(targetQuery)
+        if targetPlayer then
+            Cfg.AutoFollow = false
+            BotAction.mode = "goto_player"
+            BotAction.targetPlayer = targetPlayer
+            BotAction.targetPos = nil
+            BotAction.targetPart = nil
+            BotAction.targetLabel = targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")"
+            SafeNotify({ Title = "Public Command", Content = "Going to player: " .. BotAction.targetLabel })
+            return true
+        end
+
+        local targetInst = FindWorkspaceTarget(targetQuery)
+        if targetInst then
+            Cfg.AutoFollow = false
+            BotAction.mode = "goto_part"
+            BotAction.targetPlayer = nil
+            BotAction.targetPos = nil
+            BotAction.targetPart = targetInst
+            BotAction.targetLabel = targetInst.Name
+            SafeNotify({ Title = "Public Command", Content = "Going to object: " .. targetInst.Name })
+            return true
+        end
+
+        SafeNotify({ Title = "Target not found", Content = "Could not find player or workspace item '" .. targetQuery .. "'." })
+        return true
+    end
+
+    return false
+end
+
 local function HandleCommand(text)
     local cmd, argument = text:match("^/ai%s+(%S+)%s*(.-)%s*$")
     if not cmd then return false end
@@ -1098,6 +1480,10 @@ local function HandleCommand(text)
     if cmd == "clear" then ClearMemory()
     elseif cmd == "off" then SetEnabled(false)
     elseif cmd == "on" then SetEnabled(true)
+    elseif cmd == "stop" then
+        StopBotMovement(true)
+        SafeNotify({ Title = "Stopped", Content = "Movement and emote stopped." })
+        return true
     elseif cmd == "follow" then
         local arg = argument:lower()
         if arg == "on" then Cfg.AutoFollow = true; SaveCfg()
@@ -1108,6 +1494,12 @@ local function HandleCommand(text)
     elseif cmd == "vc" then
         SafeNotify({ Title = "Voice Chat status", Content = select(1, GetVCStatus()) })
         return true
+    elseif cmd == "keys" then
+        SafeNotify({
+            Title = "Groq Keys",
+            Content = string.format("Loaded: %d key(s) | Active: #%d (%s)", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, MaskKey(Cfg.GroqKey)),
+        })
+        return true
     elseif cmd == "model" then
         if not SetModel(argument) then
             SafeNotify({ Title = "Model required", Content = "Usage: /ai model MODEL_ID" })
@@ -1116,11 +1508,11 @@ local function HandleCommand(text)
     elseif cmd == "status" then
         SafeNotify({
             Title = "AI Bot status",
-            Content = string.format("Groq | %s\nQueue: %d | Replies: %d | Errors: %d", Cfg.Model, #MsgQueue, Runtime.stats.replies, Runtime.stats.errors),
+            Content = string.format("Groq (%d keys, #%d active) | %s\nAction: %s | Queue: %d | Replies: %d", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, #MsgQueue, Runtime.stats.replies),
         })
         return true
     else
-        SafeNotify({ Title = "Commands", Content = "/ai on, off, follow [on|off], vc, clear, model MODEL_ID, status" })
+        SafeNotify({ Title = "Commands", Content = "/ai on, off, stop, follow [on|off], vc, keys, clear, model MODEL_ID, status" })
         return true
     end
     SafeNotify({ Title = "AI Bot", Content = "Command applied: " .. cmd })
@@ -1150,18 +1542,25 @@ Runtime.Connect(TCS.MessageReceived, function(msg)
     if not sender or type(text) ~= "string" or Trim(text) == "" or IsFiltered(text) then return end
     if not IsPlayerAllowed(sender.Name) then return end
     if not Cfg.RespondToAll and not IsNearby(sender, Cfg.ProximityRadius) then return end
-    if Cfg.RespondToNameOnly then
-        local named = text:lower():find(Cfg.BotName:lower(), 1, true) ~= nil
-        if not named and not MatchesKeywordTrigger(text) then return end
-    end
+
     local now = os.clock()
-    if PlayerCooldowns[sender.UserId] and now - PlayerCooldowns[sender.UserId] < Cfg.Cooldown then return end
     for id, seenAt in pairs(SeenMessages) do if now - seenAt > 120 then SeenMessages[id] = nil end end
     local messageId = msg.MessageId
     if messageId and messageId ~= "" then
         if SeenMessages[messageId] then return end
         SeenMessages[messageId] = now
     end
+
+    -- Check public action commands first (e.g. "silentai come here", "silentai follow me", "silentai stop", "silentai go to X", "silentai copy emote")
+    if TryExecutePublicCommand(sender, text) then
+        return
+    end
+
+    if Cfg.RespondToNameOnly then
+        local named = text:lower():find(Cfg.BotName:lower(), 1, true) ~= nil
+        if not named and not MatchesKeywordTrigger(text) then return end
+    end
+    if PlayerCooldowns[sender.UserId] and now - PlayerCooldowns[sender.UserId] < Cfg.Cooldown then return end
     local queued = Enqueue({ text = text, name = sender.Name, userId = sender.UserId, automatic = true })
     if queued then PlayerCooldowns[sender.UserId] = now end
 end)
@@ -1169,6 +1568,9 @@ end)
 Runtime.Connect(Players.PlayerRemoving, function(player)
     PlayerCooldowns[player.UserId] = nil
     GreetedPlayers[player.UserId] = nil
+    if BotAction.targetPlayer == player then
+        StopBotMovement(false)
+    end
 end)
 
 -- Auto-greet loop
@@ -1193,19 +1595,68 @@ task.spawn(function()
     end
 end)
 
--- Auto-follow nearby player loop
+-- Unified Movement Loop (handles public commands: follow me, come here, go to, + AutoFollow)
 task.spawn(function()
     while Runtime.alive do
-        task.wait(0.6)
-        if Runtime.alive and Runtime.ready and Cfg.Enabled and Cfg.AutoFollow then
+        task.wait(0.25)
+        if Runtime.alive and Runtime.ready and Cfg.Enabled then
             local char = LP.Character
             local humanoid = char and char:FindFirstChildOfClass("Humanoid")
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if humanoid and hrp and humanoid.Health > 0 then
-                for _, target in ipairs(GetNearbyPlayers(Cfg.ProximityRadius)) do
-                    if IsPlayerAllowed(target.username) and target.distance > Cfg.FollowDistance then
-                        pcall(function() humanoid:MoveTo(target.hrp.Position) end)
-                        break
+                if BotAction.mode == "follow" then
+                    local target = BotAction.targetPlayer
+                    local tHRP = target and target.Parent and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+                    if not target or not target.Parent then
+                        StopBotMovement(false)
+                    elseif tHRP then
+                        local dist = (hrp.Position - tHRP.Position).Magnitude
+                        if dist > Cfg.FollowDistance then
+                            pcall(function() humanoid:MoveTo(tHRP.Position) end)
+                        end
+                    end
+
+                elseif BotAction.mode == "goto_pos" and BotAction.targetPos then
+                    local flatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(BotAction.targetPos.X, 0, BotAction.targetPos.Z)).Magnitude
+                    if flatDist <= 3.5 then
+                        StopBotMovement(false)
+                    else
+                        pcall(function() humanoid:MoveTo(BotAction.targetPos) end)
+                    end
+
+                elseif BotAction.mode == "goto_player" then
+                    local target = BotAction.targetPlayer
+                    local tHRP = target and target.Parent and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+                    if not target or not target.Parent then
+                        StopBotMovement(false)
+                    elseif tHRP then
+                        local flatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(tHRP.Position.X, 0, tHRP.Position.Z)).Magnitude
+                        if flatDist <= math.max(4, Cfg.FollowDistance) then
+                            StopBotMovement(false)
+                        else
+                            pcall(function() humanoid:MoveTo(tHRP.Position) end)
+                        end
+                    end
+
+                elseif BotAction.mode == "goto_part" then
+                    local pos = GetInstanceWorldPos(BotAction.targetPart)
+                    if not pos then
+                        StopBotMovement(false)
+                    else
+                        local flatDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(pos.X, 0, pos.Z)).Magnitude
+                        if flatDist <= 4.5 then
+                            StopBotMovement(false)
+                        else
+                            pcall(function() humanoid:MoveTo(pos) end)
+                        end
+                    end
+
+                elseif Cfg.AutoFollow then
+                    for _, target in ipairs(GetNearbyPlayers(Cfg.ProximityRadius)) do
+                        if IsPlayerAllowed(target.username) and target.distance > Cfg.FollowDistance then
+                            pcall(function() humanoid:MoveTo(target.hrp.Position) end)
+                            break
+                        end
                     end
                 end
             end
@@ -1216,11 +1667,11 @@ end)
 table.insert(Runtime.cleanups, function()
     table.clear(MsgQueue)
     DestroyBillboard()
-    if Runtime.emoteTrack then Runtime.emoteTrack:Stop(); Runtime.emoteTrack:Destroy() end
+    StopEmote()
 end)
 
 -- ═══════════════════════════════════════
--- COMPACT SETUP WIZARD (GROQ ONLY)
+-- COMPACT SETUP WIZARD (UNLIMITED GROQ KEYS)
 -- ═══════════════════════════════════════
 
 local function DetectDevicePlatform()
@@ -1240,7 +1691,7 @@ end
 local function RunSetupWizard()
     local isMac = SetupStyle() == "macOS"
     local step, closed = 1, false
-    local draftKey = (Cfg.GroqKey or ""):match("^YOUR_") and "" or (Cfg.GroqKey or "")
+    local draftKeysRaw = #Cfg.GroqKeys > 0 and table.concat(Cfg.GroqKeys, "\n") or ""
     local draftModel = Cfg.Model ~= "" and Cfg.Model or GROQ_PROVIDER.defaultModel
     local draftBotName = Cfg.BotName
     local draftLang = Cfg.Language
@@ -1273,7 +1724,6 @@ local function RunSetupWizard()
     bg.BorderSizePixel = 0
     bg.Parent = gui
 
-    -- Smaller, compact setup window (440x320)
     local win = Instance.new("Frame")
     win.Size = UDim2.fromOffset(440, 320)
     win.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1397,26 +1847,49 @@ local function RunSetupWizard()
         nextBtn.Text = step == 3 and "Start Bot" or "Next"
 
         if step == 1 then
-            stepLbl.Text = "Step 1 of 3 · Groq API Key"
-            descLbl.Text = "Get your key at console.groq.com. Only Groq is used."
+            stepLbl.Text = "Step 1 of 3 · Groq API Keys (Unlimited Fallback)"
+            descLbl.Text = "Paste 1 or more gsk_... keys (one per line or comma-separated). Auto-switches on failure."
+
+            local countLbl = Instance.new("TextLabel")
+            countLbl.Size = UDim2.new(1, 0, 0, 16)
+            countLbl.Position = UDim2.fromOffset(0, 2)
+            countLbl.BackgroundTransparency = 1
+            countLbl.Font = Enum.Font.GothamMedium
+            countLbl.TextSize = 11
+            countLbl.TextXAlignment = Enum.TextXAlignment.Left
+            countLbl.TextColor3 = Color3.fromRGB(146, 222, 184)
+            countLbl.Parent = contentFrame
 
             local keyBox = Instance.new("TextBox")
-            keyBox.Size = UDim2.new(1, 0, 0, 30)
-            keyBox.Position = UDim2.fromOffset(0, 6)
+            keyBox.Size = UDim2.new(1, 0, 1, -56)
+            keyBox.Position = UDim2.fromOffset(0, 20)
             keyBox.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             keyBox.TextColor3 = Color3.new(1, 1, 1)
-            keyBox.PlaceholderText = "Paste gsk_... Groq API key"
-            keyBox.Text = draftKey
+            keyBox.PlaceholderText = "gsk_key1...\ngsk_key2...\ngsk_key3..."
+            keyBox.Text = draftKeysRaw
             keyBox.ClearTextOnFocus = false
+            keyBox.MultiLine = true
+            keyBox.TextWrapped = true
+            keyBox.TextXAlignment = Enum.TextXAlignment.Left
+            keyBox.TextYAlignment = Enum.TextYAlignment.Top
             keyBox.Font = Enum.Font.Code
-            keyBox.TextSize = 12
+            keyBox.TextSize = 11
             keyBox.Parent = contentFrame
             Instance.new("UICorner", keyBox).CornerRadius = UDim.new(0, 5)
-            keyBox:GetPropertyChangedSignal("Text"):Connect(function() draftKey = Trim(keyBox.Text) end)
+
+            local function refreshCount()
+                local n = #ParseKeyList(draftKeysRaw)
+                countLbl.Text = n == 0 and "No keys entered yet" or (tostring(n) .. " Groq key(s) detected in fallback pool")
+            end
+            refreshCount()
+            keyBox:GetPropertyChangedSignal("Text"):Connect(function()
+                draftKeysRaw = keyBox.Text
+                refreshCount()
+            end)
 
             local saveToggle = Instance.new("TextButton")
-            saveToggle.Size = UDim2.new(1, 0, 0, 28)
-            saveToggle.Position = UDim2.fromOffset(0, 44)
+            saveToggle.Size = UDim2.new(1, 0, 0, 26)
+            saveToggle.Position = UDim2.new(0, 0, 1, -28)
             saveToggle.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             saveToggle.TextColor3 = Color3.fromRGB(220, 224, 228)
             saveToggle.Font = Enum.Font.GothamMedium
@@ -1425,7 +1898,7 @@ local function RunSetupWizard()
             saveToggle.Parent = contentFrame
             Instance.new("UICorner", saveToggle).CornerRadius = UDim.new(0, 5)
             local function refreshSaveText()
-                saveToggle.Text = "Save Groq key on disk: " .. (draftSaveKeys and "ON (plain text)" or "OFF (session only)")
+                saveToggle.Text = "Save Groq keys on disk: " .. (draftSaveKeys and "ON (plain text)" or "OFF (session only)")
             end
             refreshSaveText()
             saveToggle.Activated:Connect(function()
@@ -1502,7 +1975,7 @@ local function RunSetupWizard()
             fetchBtn.Activated:Connect(function()
                 fetchBtn.Text = "Loading..."
                 task.spawn(function()
-                    local models, err = DiscoverGroqModels(draftKey)
+                    local models, err = DiscoverGroqModels(draftKeysRaw)
                     if closed or not Runtime.alive then return end
                     fetchBtn.Text = "Fetch Models"
                     if models then
@@ -1516,7 +1989,7 @@ local function RunSetupWizard()
 
         elseif step == 3 then
             stepLbl.Text = "Step 3 of 3 · Bot Name & Personality"
-            descLbl.Text = "Set bot name, language, and personality preset."
+            descLbl.Text = "Set bot name, language, and personality preset (includes Catboy & -deres)."
 
             local nameBox = Instance.new("TextBox")
             nameBox.Size = UDim2.new(0.48, 0, 0, 26)
@@ -1546,7 +2019,6 @@ local function RunSetupWizard()
             Instance.new("UICorner", langBox).CornerRadius = UDim.new(0, 5)
             langBox:GetPropertyChangedSignal("Text"):Connect(function() draftLang = Trim(langBox.Text) end)
 
-            -- Quick preset selector strip in compact setup
             local presetBar = Instance.new("ScrollingFrame")
             presetBar.Size = UDim2.new(1, 0, 0, 26)
             presetBar.Position = UDim2.fromOffset(0, 32)
@@ -1603,8 +2075,8 @@ local function RunSetupWizard()
     end)
 
     nextBtn.Activated:Connect(function()
-        if step == 1 and (draftKey == "" or draftKey:match("^YOUR_")) then
-            errLbl.Text = "Please enter your Groq API key."
+        if step == 1 and #ParseKeyList(draftKeysRaw) == 0 then
+            errLbl.Text = "Please enter at least one Groq API key."
             return
         end
         if step == 2 and Trim(draftModel) == "" then
@@ -1620,10 +2092,13 @@ local function RunSetupWizard()
             return
         end
 
+        local keys = ParseKeyList(draftKeysRaw)
         Cfg.Provider = "groq"
-        Cfg.GroqKey = draftKey
+        Cfg.GroqKeys = keys
+        Cfg.ActiveKeyIndex = 1
+        Cfg.GroqKey = keys[1] or "YOUR_GROQ_API_KEY"
         Cfg.Model = Trim(draftModel)
-        Cfg.BotName = Trim(draftBotName) ~= "" and Trim(draftBotName) or "AIBot"
+        Cfg.BotName = Trim(draftBotName) ~= "" and Trim(draftBotName) or "silentai"
         Cfg.Language = Trim(draftLang) ~= "" and Trim(draftLang) or "Auto"
         Cfg.SystemPrompt = draftPrompt
         Cfg.SaveAPIKeys = draftSaveKeys
@@ -1642,7 +2117,7 @@ end
 if not setupAlreadyDone then RunSetupWizard() end
 
 -- ═══════════════════════════════════════
--- RAYFIELD GEN2 PANEL (GROQ + VC, NO TTS)
+-- RAYFIELD GEN2 PANEL
 -- ═══════════════════════════════════════
 
 if not Runtime.alive then return end
@@ -1694,9 +2169,9 @@ Runtime.ready = true
 
 local function SessionSummary()
     local stats = Runtime.stats
-    return string.format("Groq · %s\n%s · Queue %d/%d · Replies %d · Errors %d",
-        Cfg.Model, Cfg.Enabled and "Replying" or "Paused",
-        #MsgQueue, Cfg.QueueLimit, stats.replies, stats.errors)
+    return string.format("Groq (%d keys · #%d active) · %s\n%s · Action: %s · Queue %d/%d · Replies %d",
+        #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, Cfg.Enabled and "Replying" or "Paused",
+        BotAction.mode, #MsgQueue, Cfg.QueueLimit, stats.replies)
 end
 
 -- ─── Home ───
@@ -1722,9 +2197,9 @@ TabHome:CreateButton({
         SafeNotify({
             Title = "Session status",
             Content = string.format(
-                "Provider: Groq\nModel: %s\nQueue: %d / %d | Busy: %s\nRequests: %d | Replies: %d | Errors: %d\nSkipped: %d | Last response: %.1fs\nLast error: %s",
-                Cfg.Model, #MsgQueue, Cfg.QueueLimit, tostring(ProcessingMsg),
-                stats.requests, stats.replies, stats.errors, stats.dropped, stats.latency, stats.lastError
+                "Provider: Groq (%d keys, #%d active)\nModel: %s | Action: %s\nQueue: %d / %d | Busy: %s\nRequests: %d | Replies: %d | Errors: %d\nLast error: %s",
+                #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, #MsgQueue, Cfg.QueueLimit, tostring(ProcessingMsg),
+                stats.requests, stats.replies, stats.errors, stats.lastError
             ),
             Duration = 12,
         })
@@ -1778,6 +2253,14 @@ TabHome:CreateButton({
 })
 TabHome:CreateButton({ name = "Introduce the bot in chat", callback = function() task.spawn(DoIntroduce) end })
 TabHome:CreateButton({
+    name = "Stop active movement / copied emote",
+    callback = function()
+        StopBotMovement(true)
+        if statusText then statusText:Set(SessionSummary()) end
+        SafeNotify({ Title = "Stopped", Content = "Stopped active movement and copied emote." })
+    end,
+})
+TabHome:CreateButton({
     name = "Cancel Pending Replies",
     callback = function()
         InvalidatePending()
@@ -1814,7 +2297,7 @@ TabHome:CreateButton({
 
 TabHome:CreateSection({ name = "Private chat" })
 local uiChatInput = ""
-TabHome:CreateInput({ name = "Your message", placeholder = "Say something...", callback = function(v) uiChatInput = v end, forgetState = true })
+TabHome:CreateInput({ name = "Your message", placeholder = "Ask silentai something...", callback = function(v) uiChatInput = v end, forgetState = true })
 TabHome:CreateButton({
     name = "Send privately",
     callback = function()
@@ -1845,9 +2328,9 @@ local TabPersonality = Win:CreateTab({ name = "Personality" })
 TabPersonality:CreateSection({ name = "Identity" })
 TabPersonality:CreateInput({
     name = "Bot Name",
-    placeholder = "AIBot",
+    placeholder = "silentai",
     value = Cfg.BotName,
-    callback = function(v) Cfg.BotName = Trim(v) ~= "" and Trim(v) or "AIBot"; SaveCfg(); UpdateBillboard() end,
+    callback = function(v) Cfg.BotName = Trim(v) ~= "" and Trim(v) or "silentai"; SaveCfg(); UpdateBillboard() end,
     forgetState = true,
 })
 TabPersonality:CreateInput({
@@ -1928,6 +2411,18 @@ TabPersonality:CreateSlider({ name = "Max reply tokens", increment = 10, range =
 
 -- ─── Replies & Movement ───
 local TabReplies = Win:CreateTab({ name = "Replies" })
+TabReplies:CreateSection({ name = "Public chat commands" })
+TabReplies:CreateToggle({
+    name = "Enable public commands ((name) come here, follow me, stop, go to, copy emote)",
+    value = Cfg.PublicCommands,
+    callback = function(v) Cfg.PublicCommands = v; SaveCfg() end,
+    forgetState = true,
+})
+TabReplies:CreateText({
+    name = "Public command syntax",
+    text = "• (name) come here  • (name) follow me  • (name) stop\n• (name) go to (player or workspace item)  • (name) copy emote",
+})
+
 TabReplies:CreateSection({ name = "Who it replies to" })
 TabReplies:CreateToggle({ name = "Reply to everyone (ignore distance)", value = Cfg.RespondToAll, callback = function(v) Cfg.RespondToAll = v; SaveCfg() end, forgetState = true })
 TabReplies:CreateToggle({ name = "Only reply when named", value = Cfg.RespondToNameOnly, callback = function(v) Cfg.RespondToNameOnly = v; SaveCfg() end, forgetState = true })
@@ -1984,36 +2479,104 @@ TabReplies:CreateInput({
 TabReplies:CreateButton({ name = "Clear whitelist", callback = function() Cfg.Whitelist = {}; SaveCfg(); listsText:Set(ListsSummary()) end })
 TabReplies:CreateButton({ name = "Clear blacklist", callback = function() Cfg.Blacklist = {}; SaveCfg(); listsText:Set(ListsSummary()) end })
 
--- ─── Groq Provider ───
+-- ─── Groq API (Unlimited Keys + Failover) ───
 local TabProvider = Win:CreateTab({ name = "Groq API" })
-TabProvider:CreateSection({ name = "Groq Connection" })
-local connectionText = TabProvider:CreateText({ name = "Active connection", text = "Provider: Groq\nModel: " .. Cfg.Model })
+TabProvider:CreateSection({ name = "Groq Connection & Key Pool" })
+
+local function KeyPoolSummary()
+    local total = #Cfg.GroqKeys
+    if total == 0 then
+        return "Provider: Groq · Model: " .. Cfg.Model .. "\nKeys: 0 loaded (add keys below)"
+    end
+    local preview = {}
+    for i, k in ipairs(Cfg.GroqKeys) do
+        local prefix = (i == Cfg.ActiveKeyIndex) and "▶ #" or "  #"
+        table.insert(preview, prefix .. tostring(i) .. ": " .. MaskKey(k))
+        if i >= 6 and total > 6 then
+            table.insert(preview, "  ... +" .. tostring(total - 6) .. " more key(s)")
+            break
+        end
+    end
+    return string.format("Provider: Groq · Model: %s\nKeys: %d total (Active: #%d)\n%s",
+        Cfg.Model, total, Cfg.ActiveKeyIndex, table.concat(preview, "\n"))
+end
+
+local connectionText = TabProvider:CreateText({ name = "Active key pool", text = KeyPoolSummary() })
+
+TabProvider:CreateInput({
+    name = "Add Groq API key(s)",
+    placeholder = "Paste 1 or many gsk_... keys (comma/space/newline separated)",
+    callback = function(v)
+        local incoming = ParseKeyList(v)
+        if #incoming == 0 then return end
+        local added = 0
+        for _, k in ipairs(incoming) do
+            if not table.find(Cfg.GroqKeys, k) then
+                table.insert(Cfg.GroqKeys, k)
+                added = added + 1
+            end
+        end
+        SyncKeyPool()
+        InvalidatePending()
+        SaveCfg()
+        connectionText:Set(KeyPoolSummary())
+        if statusText then statusText:Set(SessionSummary()) end
+        SafeNotify({
+            Title = "Groq keys updated",
+            Content = string.format("Added %d new key(s). Total keys in pool: %d", added, #Cfg.GroqKeys),
+        })
+    end,
+    forgetState = true,
+})
+
+TabProvider:CreateButton({
+    name = "Rotate to next Groq key now",
+    callback = function()
+        if #Cfg.GroqKeys <= 1 then
+            SafeNotify({ Title = "Single key", Content = "Add 2 or more keys to rotate between them." })
+            return
+        end
+        Cfg.ActiveKeyIndex = (Cfg.ActiveKeyIndex % #Cfg.GroqKeys) + 1
+        Cfg.GroqKey = Cfg.GroqKeys[Cfg.ActiveKeyIndex]
+        SaveCfg()
+        connectionText:Set(KeyPoolSummary())
+        if statusText then statusText:Set(SessionSummary()) end
+        SafeNotify({
+            Title = "Switched active key",
+            Content = string.format("Now using Key #%d (%s)", Cfg.ActiveKeyIndex, MaskKey(Cfg.GroqKey)),
+        })
+    end,
+})
+
+TabProvider:CreateButton({
+    name = "Clear all Groq keys",
+    callback = function()
+        Cfg.GroqKeys = {}
+        Cfg.GroqKey = "YOUR_GROQ_API_KEY"
+        Cfg.ActiveKeyIndex = 1
+        InvalidatePending()
+        SaveCfg()
+        connectionText:Set(KeyPoolSummary())
+        if statusText then statusText:Set(SessionSummary()) end
+        SafeNotify({ Title = "Keys cleared", Content = "All Groq API keys have been removed." })
+    end,
+})
+
 TabProvider:CreateInput({
     name = "Model ID",
     value = Cfg.Model,
     placeholder = "Exact Groq model ID",
     callback = function(value)
         if SetModel(value) then
-            connectionText:Set("Provider: Groq\nModel: " .. Cfg.Model)
+            connectionText:Set(KeyPoolSummary())
             SafeNotify({ Title = "Groq model updated", Content = Cfg.Model })
         end
     end,
     forgetState = true,
 })
-TabProvider:CreateInput({
-    name = "Groq API Key",
-    placeholder = "Paste gsk_... key, then press Enter",
-    callback = function(v)
-        if Trim(v) == "" then return end
-        Cfg.GroqKey = Trim(v)
-        InvalidatePending()
-        SaveCfg()
-        SafeNotify({ Title = "Groq key updated", Content = Cfg.SaveAPIKeys and "Saved on disk" or "Saved for session" })
-    end,
-    forgetState = true,
-})
+
 TabProvider:CreateToggle({
-    name = "Remember Groq API key on this device",
+    name = "Remember Groq API key(s) on this device",
     value = Cfg.SaveAPIKeys,
     callback = function(value)
         Cfg.SaveAPIKeys = value
@@ -2022,19 +2585,27 @@ TabProvider:CreateToggle({
     end,
     forgetState = true,
 })
+
 TabProvider:CreateButton({
-    name = "Test Groq Connection (private)",
+    name = "Test Groq Connection & Failover (private)",
     callback = function()
         QueueManual({
             text = "Reply with: Groq connection successful.",
             name = LP.Name,
             private = true,
             callback = function(result, err)
-                SafeNotify({ Title = result and "Groq working" or "Groq failed", Content = result or err, Duration = 8 })
+                connectionText:Set(KeyPoolSummary())
+                if statusText then statusText:Set(SessionSummary()) end
+                SafeNotify({
+                    Title = result and ("Groq working (Key #" .. Cfg.ActiveKeyIndex .. ")") or "Groq failed",
+                    Content = result or err,
+                    Duration = 8,
+                })
             end,
         })
     end,
 })
+
 TabProvider:CreateButton({
     name = "Reopen setup on next run",
     callback = function()
@@ -2047,7 +2618,7 @@ TabProvider:CreateButton({
 
 -- ─── Emotes ───
 local TabEmotes = Win:CreateTab({ name = "Emotes" })
-TabEmotes:CreateSection({ name = "Play an emote" })
+TabEmotes:CreateSection({ name = "Play or stop an emote" })
 local emoteList = {
     { "Wave", "WAVE" }, { "Dance 1", "DANCE" }, { "Dance 2", "DANCE2" },
     { "Dance 3", "DANCE3" }, { "Laugh", "LAUGH" }, { "Point", "POINT" }, { "Cheer", "CHEER" },
@@ -2055,6 +2626,7 @@ local emoteList = {
 for _, e in ipairs(emoteList) do
     TabEmotes:CreateButton({ name = e[1], callback = function() PlayEmote(e[2]) end })
 end
+TabEmotes:CreateButton({ name = "Stop current emote", callback = function() StopEmote() end })
 
 -- ─── Settings ───
 local TabSettings = Win:CreateTab({ name = "Settings" })
@@ -2110,7 +2682,7 @@ TabSettings:CreateSlider({ name = "Request timeout (seconds)", increment = 5, ra
 TabSettings:CreateSection({ name = "Help & unload" })
 TabSettings:CreateText({
     name = "Local commands",
-    text = "/ai on • /ai off • /ai follow [on|off] • /ai vc • /ai clear • /ai model MODEL_ID • /ai status\nK toggles the control panel.",
+    text = "/ai on • /ai off • /ai stop • /ai follow [on|off] • /ai vc • /ai keys • /ai clear • /ai model MODEL_ID • /ai status\nK toggles the control panel.",
 })
 TabSettings:CreateButton({
     name = "Save Settings Now",
@@ -2139,9 +2711,10 @@ task.spawn(function()
     task.wait(1.5)
     SafeNotify({
         Title = "Groq AI Chat Bot v" .. VERSION .. " Ready",
-        Content = "Model: " .. Cfg.Model .. "\n" .. (Cfg.Enabled and "Bot is enabled." or "Bot is disabled.") .. "\nVC Support: " .. (Cfg.VCSupport and "On" or "Off"),
+        Content = string.format("Bot: %s | Model: %s\nGroq Keys Loaded: %d (#%d active)\nPublic Commands: %s",
+            Cfg.BotName, Cfg.Model, #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.PublicCommands and "On" or "Off"),
         Duration = 6,
     })
 end)
 
-warn("[Groq AI Bot v" .. VERSION .. "] Loaded. Model: " .. Cfg.Model)
+warn("[Groq AI Bot v" .. VERSION .. "] Loaded. Model: " .. Cfg.Model .. " | Keys: " .. tostring(#Cfg.GroqKeys))
