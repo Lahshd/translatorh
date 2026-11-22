@@ -2,4 +2,13 @@
 # Requires a Executor of %60 Sunc and %50 Unc minimum.
 # Requires decent phone / computer to run.
 # NOTE: pathfinding, follow, and more work universally, finding items, avoiding walls, and going through doors are exclusivly for the game "Bahkruums." As the game updates, stuff in workspace may change, resulting in the bot having a heart attack or best described as a lobotomy.
-# Please do not skid this as I have personally taken mounds of work to do this,
+# Please do not skid this as I have personally taken mounds of work to do this.
+
+#BUILD v23
+removed Bahkruums game. now universial
+Updated GUI for a more clean look. aka i finally got paid
+Executor must support http calls and chat hooking. so like 40 to 50 S/UNC
+#Minimum Specs for like running smoothly
+#IOS 16 or higher using a executor, though it will lag. recommended ios 18. iPhone 12.
+#any android with a snapdragon chip set.
+#Intel i3 Intergraded graphics. 
