@@ -1,4 +1,4 @@
-local VERSION = "20"
+local VERSION = "21"
 -- One lifecycle per client, including when this script is executed again.
 local Environment = getgenv and getgenv() or _G
 if Environment.AIChatBotRuntime and Environment.AIChatBotRuntime.Stop then
@@ -101,15 +101,56 @@ local GROQ_PROVIDER = {
     },
 }
 
+-- Original Personality Prompts Restored
 local PERSONALITIES = {
-    { name = "Friendly Gamer", emoji = "😊", color = Color3.fromRGB(80,200,120), prompt = [[You are a fun, friendly Roblox player who loves games. Keep replies SHORT (1-2 sentences). Be positive and casual. You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]] },
-    { name = "Dramatic",       emoji = "🎭", color = Color3.fromRGB(220,100,100), prompt = [[You are a hilariously overdramatic Roblox player. Everything is the most important thing ever. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly.]] },
-    { name = "Sarcastic",      emoji = "😏", color = Color3.fromRGB(200,200,80),  prompt = [[You are a witty, sarcastic Roblox player. Dry humor, clever comebacks but never mean. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly.]] },
-    { name = "Chill",          emoji = "😎", color = Color3.fromRGB(100,200,200), prompt = [[You are a super chill, laid-back Roblox player. Nothing phases you. Very casual and relaxed. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly.]] },
-    { name = "Competitive",    emoji = "🔥", color = Color3.fromRGB(255,140,60),  prompt = [[You are a hyper-competitive Roblox player. Everything is a challenge. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly.]] },
-    { name = "Mysterious",     emoji = "🌙", color = Color3.fromRGB(120,80,200),  prompt = [[You are a mysterious, enigmatic Roblox player. You speak with an air of mystery and occasionally use metaphors. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly.]] },
-    { name = "Wholesome",      emoji = "💖", color = Color3.fromRGB(255,130,180), prompt = [[You are the most wholesome, kind, and encouraging Roblox player. You compliment others and spread positivity. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly.]] },
-    { name = "Custom",         emoji = "✏️", color = Color3.fromRGB(100,100,255), prompt = "" },
+    {
+        name = "Friendly Gamer",
+        emoji = "😊",
+        color = Color3.fromRGB(80, 200, 120),
+        prompt = [[You are a fun, friendly Roblox player who loves games. Keep replies SHORT (1-2 sentences). Be positive and casual. You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+    },
+    {
+        name = "Dramatic",
+        emoji = "🎭",
+        color = Color3.fromRGB(220, 100, 100),
+        prompt = [[You are a hilariously overdramatic Roblox player. Everything is the most important thing ever. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+    },
+    {
+        name = "Sarcastic",
+        emoji = "😏",
+        color = Color3.fromRGB(200, 200, 80),
+        prompt = [[You are a witty, sarcastic Roblox player. Dry humor, clever comebacks but never mean. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+    },
+    {
+        name = "Chill",
+        emoji = "😎",
+        color = Color3.fromRGB(100, 200, 200),
+        prompt = [[You are a super chill, laid-back Roblox player. Nothing phases you. Very casual and relaxed. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+    },
+    {
+        name = "Competitive",
+        emoji = "🔥",
+        color = Color3.fromRGB(255, 140, 60),
+        prompt = [[You are a hyper-competitive Roblox player. Everything is a challenge. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+    },
+    {
+        name = "Mysterious",
+        emoji = "🌙",
+        color = Color3.fromRGB(120, 80, 200),
+        prompt = [[You are a mysterious, enigmatic Roblox player. You speak with an air of mystery and occasionally use metaphors. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+    },
+    {
+        name = "Wholesome",
+        emoji = "💖",
+        color = Color3.fromRGB(255, 130, 180),
+        prompt = [[You are the most wholesome, kind, and encouraging Roblox player. You compliment others and spread positivity. Keep replies SHORT (1-2 sentences). You may include ONE emote tag: [WAVE] [DANCE] [DANCE2] [DANCE3] [LAUGH] [POINT] [CHEER]. No <think> blocks. Reply directly. Roblox has a chat filter - if told a message was filtered, use cleaner words next time.]],
+    },
+    {
+        name = "Custom",
+        emoji = "✏️",
+        color = Color3.fromRGB(100, 100, 255),
+        prompt = "",
+    },
 }
 
 local LENGTH_MODES = {
@@ -362,7 +403,7 @@ local function GetVCStatus()
         end
     end)
     if vcEnabled then
-        local micInfo = micMuted == nil and "Mic state: system/Roblox HUD" or (micMuted and "Mic: Muted" or "Mic: Unmuted")
+        local micInfo = micMuted == nil and "Mic state: Roblox HUD" or (micMuted and "Mic: Muted" or "Mic: Unmuted")
         return "VC Available · " .. micInfo, true
     end
     return "VC Service detected (not enabled for account or place)", false
@@ -700,7 +741,7 @@ end
 local function CallGroq(msgs, bodyExtra)
     local key = Trim(Cfg.GroqKey)
     if key == "" or key:match("^YOUR_") then
-        return nil, "Enter your Groq API key in setup or the Provider tab."
+        return nil, "Enter your Groq API key in setup or the Groq API tab."
     end
     Runtime.stats.requests = Runtime.stats.requests + 1
     local b = {
@@ -1179,7 +1220,7 @@ table.insert(Runtime.cleanups, function()
 end)
 
 -- ═══════════════════════════════════════
--- SETUP WIZARD (GROQ ONLY)
+-- COMPACT SETUP WIZARD (GROQ ONLY)
 -- ═══════════════════════════════════════
 
 local function DetectDevicePlatform()
@@ -1232,115 +1273,116 @@ local function RunSetupWizard()
     bg.BorderSizePixel = 0
     bg.Parent = gui
 
+    -- Smaller, compact setup window (440x320)
     local win = Instance.new("Frame")
-    win.Size = UDim2.fromOffset(640, 460)
+    win.Size = UDim2.fromOffset(440, 320)
     win.AnchorPoint = Vector2.new(0.5, 0.5)
     win.Position = UDim2.fromScale(0.5, 0.5)
     win.BackgroundColor3 = isMac and Color3.fromRGB(28, 28, 32) or Color3.fromRGB(30, 32, 36)
     win.BorderSizePixel = 0
     win.Parent = bg
-    Instance.new("UICorner", win).CornerRadius = UDim.new(0, isMac and 18 or 8)
+    Instance.new("UICorner", win).CornerRadius = UDim.new(0, isMac and 14 or 8)
     local winStroke = Instance.new("UIStroke", win)
     winStroke.Color = isMac and Color3.fromRGB(90, 95, 110) or Color3.fromRGB(60, 65, 72)
 
     local titleBar = Instance.new("Frame")
-    titleBar.Size = UDim2.new(1, 0, 0, 44)
+    titleBar.Size = UDim2.new(1, 0, 0, 34)
     titleBar.BackgroundTransparency = 1
     titleBar.Parent = win
 
     local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -100, 1, 0)
-    titleLbl.Position = UDim2.fromOffset(18, 0)
+    titleLbl.Size = UDim2.new(1, -60, 1, 0)
+    titleLbl.Position = UDim2.fromOffset(14, 0)
     titleLbl.BackgroundTransparency = 1
     titleLbl.Font = Enum.Font.GothamBold
-    titleLbl.TextSize = 15
+    titleLbl.TextSize = 13
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
     titleLbl.TextColor3 = Color3.fromRGB(240, 242, 245)
-    titleLbl.Text = "Groq AI Chat Bot Setup · v" .. VERSION
+    titleLbl.Text = "Groq AI Bot Setup · v" .. VERSION
     titleLbl.Parent = titleBar
 
     local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.fromOffset(36, 28)
+    closeBtn.Size = UDim2.fromOffset(26, 22)
     closeBtn.AnchorPoint = Vector2.new(1, 0.5)
-    closeBtn.Position = UDim2.new(1, -12, 0.5, 0)
+    closeBtn.Position = UDim2.new(1, -10, 0.5, 0)
     closeBtn.BackgroundColor3 = Color3.fromRGB(180, 55, 55)
     closeBtn.TextColor3 = Color3.new(1, 1, 1)
     closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.TextSize = 13
+    closeBtn.TextSize = 11
     closeBtn.Text = "✕"
     closeBtn.BorderSizePixel = 0
     closeBtn.Parent = titleBar
-    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 5)
     closeBtn.Activated:Connect(function() finish(true) end)
 
     local bodyArea = Instance.new("Frame")
-    bodyArea.Size = UDim2.new(1, -36, 1, -106)
-    bodyArea.Position = UDim2.fromOffset(18, 50)
+    bodyArea.Size = UDim2.new(1, -28, 1, -80)
+    bodyArea.Position = UDim2.fromOffset(14, 36)
     bodyArea.BackgroundTransparency = 1
     bodyArea.Parent = win
 
     local stepLbl = Instance.new("TextLabel")
-    stepLbl.Size = UDim2.new(1, 0, 0, 22)
+    stepLbl.Size = UDim2.new(1, 0, 0, 18)
     stepLbl.BackgroundTransparency = 1
     stepLbl.Font = Enum.Font.GothamBold
-    stepLbl.TextSize = 14
+    stepLbl.TextSize = 12
     stepLbl.TextXAlignment = Enum.TextXAlignment.Left
     stepLbl.TextColor3 = Color3.fromRGB(244, 114, 55)
     stepLbl.Parent = bodyArea
 
     local descLbl = Instance.new("TextLabel")
-    descLbl.Size = UDim2.new(1, 0, 0, 34)
-    descLbl.Position = UDim2.fromOffset(0, 22)
+    descLbl.Size = UDim2.new(1, 0, 0, 26)
+    descLbl.Position = UDim2.fromOffset(0, 18)
     descLbl.BackgroundTransparency = 1
     descLbl.Font = Enum.Font.Gotham
-    descLbl.TextSize = 12
+    descLbl.TextSize = 11
     descLbl.TextWrapped = true
     descLbl.TextXAlignment = Enum.TextXAlignment.Left
     descLbl.TextColor3 = Color3.fromRGB(175, 182, 190)
     descLbl.Parent = bodyArea
 
     local contentFrame = Instance.new("Frame")
-    contentFrame.Size = UDim2.new(1, 0, 1, -64)
-    contentFrame.Position = UDim2.fromOffset(0, 62)
+    contentFrame.Size = UDim2.new(1, 0, 1, -48)
+    contentFrame.Position = UDim2.fromOffset(0, 48)
     contentFrame.BackgroundTransparency = 1
     contentFrame.Parent = bodyArea
 
     local errLbl = Instance.new("TextLabel")
-    errLbl.Size = UDim2.new(1, -240, 0, 36)
-    errLbl.Position = UDim2.new(0, 18, 1, -46)
+    errLbl.Size = UDim2.new(1, -186, 0, 28)
+    errLbl.Position = UDim2.new(0, 14, 1, -36)
     errLbl.BackgroundTransparency = 1
     errLbl.Font = Enum.Font.GothamMedium
-    errLbl.TextSize = 12
+    errLbl.TextSize = 11
     errLbl.TextWrapped = true
     errLbl.TextXAlignment = Enum.TextXAlignment.Left
     errLbl.TextColor3 = Color3.fromRGB(255, 120, 120)
     errLbl.Parent = win
 
     local backBtn = Instance.new("TextButton")
-    backBtn.Size = UDim2.fromOffset(90, 32)
+    backBtn.Size = UDim2.fromOffset(70, 26)
     backBtn.AnchorPoint = Vector2.new(1, 0.5)
-    backBtn.Position = UDim2.new(1, -138, 1, -28)
+    backBtn.Position = UDim2.new(1, -108, 1, -22)
     backBtn.BackgroundColor3 = Color3.fromRGB(52, 56, 62)
     backBtn.TextColor3 = Color3.new(1, 1, 1)
     backBtn.Font = Enum.Font.GothamMedium
-    backBtn.TextSize = 13
+    backBtn.TextSize = 11
     backBtn.Text = "Back"
     backBtn.BorderSizePixel = 0
     backBtn.Parent = win
-    Instance.new("UICorner", backBtn).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", backBtn).CornerRadius = UDim.new(0, 5)
 
     local nextBtn = Instance.new("TextButton")
-    nextBtn.Size = UDim2.fromOffset(116, 32)
+    nextBtn.Size = UDim2.fromOffset(88, 26)
     nextBtn.AnchorPoint = Vector2.new(1, 0.5)
-    nextBtn.Position = UDim2.new(1, -18, 1, -28)
+    nextBtn.Position = UDim2.new(1, -14, 1, -22)
     nextBtn.BackgroundColor3 = Color3.fromRGB(244, 114, 55)
     nextBtn.TextColor3 = Color3.new(1, 1, 1)
     nextBtn.Font = Enum.Font.GothamBold
-    nextBtn.TextSize = 13
+    nextBtn.TextSize = 11
     nextBtn.Text = "Next"
     nextBtn.BorderSizePixel = 0
     nextBtn.Parent = win
-    Instance.new("UICorner", nextBtn).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", nextBtn).CornerRadius = UDim.new(0, 5)
 
     local function clearContent()
         for _, c in ipairs(contentFrame:GetChildren()) do c:Destroy() end
@@ -1356,34 +1398,34 @@ local function RunSetupWizard()
 
         if step == 1 then
             stepLbl.Text = "Step 1 of 3 · Groq API Key"
-            descLbl.Text = "Get your API key at console.groq.com. Only Groq is used for AI chat replies."
+            descLbl.Text = "Get your key at console.groq.com. Only Groq is used."
 
             local keyBox = Instance.new("TextBox")
-            keyBox.Size = UDim2.new(1, 0, 0, 36)
-            keyBox.Position = UDim2.fromOffset(0, 8)
+            keyBox.Size = UDim2.new(1, 0, 0, 30)
+            keyBox.Position = UDim2.fromOffset(0, 6)
             keyBox.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             keyBox.TextColor3 = Color3.new(1, 1, 1)
             keyBox.PlaceholderText = "Paste gsk_... Groq API key"
             keyBox.Text = draftKey
             keyBox.ClearTextOnFocus = false
             keyBox.Font = Enum.Font.Code
-            keyBox.TextSize = 13
+            keyBox.TextSize = 12
             keyBox.Parent = contentFrame
-            Instance.new("UICorner", keyBox).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", keyBox).CornerRadius = UDim.new(0, 5)
             keyBox:GetPropertyChangedSignal("Text"):Connect(function() draftKey = Trim(keyBox.Text) end)
 
             local saveToggle = Instance.new("TextButton")
-            saveToggle.Size = UDim2.new(1, 0, 0, 34)
-            saveToggle.Position = UDim2.fromOffset(0, 56)
+            saveToggle.Size = UDim2.new(1, 0, 0, 28)
+            saveToggle.Position = UDim2.fromOffset(0, 44)
             saveToggle.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             saveToggle.TextColor3 = Color3.fromRGB(220, 224, 228)
             saveToggle.Font = Enum.Font.GothamMedium
-            saveToggle.TextSize = 12
+            saveToggle.TextSize = 11
             saveToggle.BorderSizePixel = 0
             saveToggle.Parent = contentFrame
-            Instance.new("UICorner", saveToggle).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", saveToggle).CornerRadius = UDim.new(0, 5)
             local function refreshSaveText()
-                saveToggle.Text = "Remember Groq API key on disk: " .. (draftSaveKeys and "ON (plain text)" or "OFF (session only)")
+                saveToggle.Text = "Save Groq key on disk: " .. (draftSaveKeys and "ON (plain text)" or "OFF (session only)")
             end
             refreshSaveText()
             saveToggle.Activated:Connect(function()
@@ -1393,44 +1435,44 @@ local function RunSetupWizard()
 
         elseif step == 2 then
             stepLbl.Text = "Step 2 of 3 · Groq Model"
-            descLbl.Text = "Pick a suggested Groq model ID or enter an exact model ID from your Groq console."
+            descLbl.Text = "Select or type an exact Groq model ID."
 
             local modelBox = Instance.new("TextBox")
-            modelBox.Size = UDim2.new(1, -130, 0, 34)
-            modelBox.Position = UDim2.fromOffset(0, 4)
+            modelBox.Size = UDim2.new(1, -102, 0, 28)
+            modelBox.Position = UDim2.fromOffset(0, 2)
             modelBox.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             modelBox.TextColor3 = Color3.new(1, 1, 1)
             modelBox.Text = draftModel
             modelBox.ClearTextOnFocus = false
             modelBox.Font = Enum.Font.Code
-            modelBox.TextSize = 13
+            modelBox.TextSize = 11
             modelBox.Parent = contentFrame
-            Instance.new("UICorner", modelBox).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", modelBox).CornerRadius = UDim.new(0, 5)
             modelBox:GetPropertyChangedSignal("Text"):Connect(function() draftModel = Trim(modelBox.Text) end)
 
             local fetchBtn = Instance.new("TextButton")
-            fetchBtn.Size = UDim2.fromOffset(120, 34)
-            fetchBtn.Position = UDim2.new(1, -120, 0, 4)
+            fetchBtn.Size = UDim2.fromOffset(94, 28)
+            fetchBtn.Position = UDim2.new(1, -94, 0, 2)
             fetchBtn.BackgroundColor3 = Color3.fromRGB(55, 60, 68)
             fetchBtn.TextColor3 = Color3.new(1, 1, 1)
             fetchBtn.Font = Enum.Font.GothamMedium
-            fetchBtn.TextSize = 12
+            fetchBtn.TextSize = 11
             fetchBtn.Text = "Fetch Models"
             fetchBtn.BorderSizePixel = 0
             fetchBtn.Parent = contentFrame
-            Instance.new("UICorner", fetchBtn).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", fetchBtn).CornerRadius = UDim.new(0, 5)
 
             local list = Instance.new("ScrollingFrame")
-            list.Size = UDim2.new(1, 0, 1, -48)
-            list.Position = UDim2.fromOffset(0, 46)
+            list.Size = UDim2.new(1, 0, 1, -36)
+            list.Position = UDim2.fromOffset(0, 36)
             list.BackgroundColor3 = Color3.fromRGB(24, 26, 30)
-            list.ScrollBarThickness = 4
+            list.ScrollBarThickness = 3
             list.CanvasSize = UDim2.new()
             list.AutomaticCanvasSize = Enum.AutomaticSize.Y
             list.Parent = contentFrame
-            Instance.new("UICorner", list).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", list).CornerRadius = UDim.new(0, 5)
             local layout = Instance.new("UIListLayout", list)
-            layout.Padding = UDim.new(0, 4)
+            layout.Padding = UDim.new(0, 3)
 
             local function populate(entries)
                 for _, child in ipairs(list:GetChildren()) do
@@ -1438,16 +1480,16 @@ local function RunSetupWizard()
                 end
                 for _, entry in ipairs(entries) do
                     local row = Instance.new("TextButton")
-                    row.Size = UDim2.new(1, -8, 0, 30)
+                    row.Size = UDim2.new(1, -6, 0, 24)
                     row.BackgroundColor3 = draftModel == entry.id and Color3.fromRGB(65, 42, 32) or Color3.fromRGB(38, 41, 46)
                     row.TextColor3 = Color3.new(1, 1, 1)
                     row.Font = Enum.Font.Gotham
-                    row.TextSize = 12
+                    row.TextSize = 11
                     row.TextXAlignment = Enum.TextXAlignment.Left
-                    row.Text = "  " .. (entry.label or entry.id) .. "  (" .. entry.id .. ")"
+                    row.Text = "  " .. (entry.label or entry.id)
                     row.BorderSizePixel = 0
                     row.Parent = list
-                    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+                    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
                     row.Activated:Connect(function()
                         draftModel = entry.id
                         modelBox.Text = entry.id
@@ -1474,10 +1516,10 @@ local function RunSetupWizard()
 
         elseif step == 3 then
             stepLbl.Text = "Step 3 of 3 · Bot Name & Personality"
-            descLbl.Text = "Customize your bot's name, language, and personality prompt."
+            descLbl.Text = "Set bot name, language, and personality preset."
 
             local nameBox = Instance.new("TextBox")
-            nameBox.Size = UDim2.new(0.48, 0, 0, 32)
+            nameBox.Size = UDim2.new(0.48, 0, 0, 26)
             nameBox.Position = UDim2.fromOffset(0, 2)
             nameBox.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             nameBox.TextColor3 = Color3.new(1, 1, 1)
@@ -1485,13 +1527,13 @@ local function RunSetupWizard()
             nameBox.Text = draftBotName
             nameBox.ClearTextOnFocus = false
             nameBox.Font = Enum.Font.Gotham
-            nameBox.TextSize = 13
+            nameBox.TextSize = 11
             nameBox.Parent = contentFrame
-            Instance.new("UICorner", nameBox).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", nameBox).CornerRadius = UDim.new(0, 5)
             nameBox:GetPropertyChangedSignal("Text"):Connect(function() draftBotName = Trim(nameBox.Text) end)
 
             local langBox = Instance.new("TextBox")
-            langBox.Size = UDim2.new(0.48, 0, 0, 32)
+            langBox.Size = UDim2.new(0.48, 0, 0, 26)
             langBox.Position = UDim2.new(0.52, 0, 0, 2)
             langBox.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             langBox.TextColor3 = Color3.new(1, 1, 1)
@@ -1499,14 +1541,28 @@ local function RunSetupWizard()
             langBox.Text = draftLang
             langBox.ClearTextOnFocus = false
             langBox.Font = Enum.Font.Gotham
-            langBox.TextSize = 13
+            langBox.TextSize = 11
             langBox.Parent = contentFrame
-            Instance.new("UICorner", langBox).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", langBox).CornerRadius = UDim.new(0, 5)
             langBox:GetPropertyChangedSignal("Text"):Connect(function() draftLang = Trim(langBox.Text) end)
 
+            -- Quick preset selector strip in compact setup
+            local presetBar = Instance.new("ScrollingFrame")
+            presetBar.Size = UDim2.new(1, 0, 0, 26)
+            presetBar.Position = UDim2.fromOffset(0, 32)
+            presetBar.BackgroundTransparency = 1
+            presetBar.ScrollBarThickness = 2
+            presetBar.ScrollingDirection = Enum.ScrollingDirection.X
+            presetBar.CanvasSize = UDim2.new()
+            presetBar.AutomaticCanvasSize = Enum.AutomaticSize.X
+            presetBar.Parent = contentFrame
+            local pLayout = Instance.new("UIListLayout", presetBar)
+            pLayout.FillDirection = Enum.FillDirection.Horizontal
+            pLayout.Padding = UDim.new(0, 4)
+
             local promptBox = Instance.new("TextBox")
-            promptBox.Size = UDim2.new(1, 0, 1, -44)
-            promptBox.Position = UDim2.fromOffset(0, 42)
+            promptBox.Size = UDim2.new(1, 0, 1, -64)
+            promptBox.Position = UDim2.fromOffset(0, 62)
             promptBox.BackgroundColor3 = Color3.fromRGB(42, 45, 50)
             promptBox.TextColor3 = Color3.new(1, 1, 1)
             promptBox.Text = draftPrompt
@@ -1516,10 +1572,29 @@ local function RunSetupWizard()
             promptBox.TextXAlignment = Enum.TextXAlignment.Left
             promptBox.TextYAlignment = Enum.TextYAlignment.Top
             promptBox.Font = Enum.Font.Gotham
-            promptBox.TextSize = 12
+            promptBox.TextSize = 11
             promptBox.Parent = contentFrame
-            Instance.new("UICorner", promptBox).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", promptBox).CornerRadius = UDim.new(0, 5)
             promptBox:GetPropertyChangedSignal("Text"):Connect(function() draftPrompt = promptBox.Text end)
+
+            for _, p in ipairs(PERSONALITIES) do
+                if p.prompt ~= "" then
+                    local chip = Instance.new("TextButton")
+                    chip.Size = UDim2.fromOffset(96, 22)
+                    chip.BackgroundColor3 = Color3.fromRGB(45, 49, 55)
+                    chip.TextColor3 = Color3.new(1, 1, 1)
+                    chip.Font = Enum.Font.GothamMedium
+                    chip.TextSize = 10
+                    chip.Text = p.emoji .. " " .. p.name
+                    chip.BorderSizePixel = 0
+                    chip.Parent = presetBar
+                    Instance.new("UICorner", chip).CornerRadius = UDim.new(0, 4)
+                    chip.Activated:Connect(function()
+                        draftPrompt = p.prompt
+                        promptBox.Text = p.prompt
+                    end)
+                end
+            end
         end
     end
 
