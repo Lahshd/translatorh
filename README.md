@@ -20,20 +20,38 @@ The script is entirely open source, with some containing an API key being obfusc
 We intend no hard towards any indivudal running this script, and if you do get banned while using it, **BLAME YOUR EXECUTOR**. Anywho, we will add more features later on, including its vision,
 pathfinding, interaction, and more. as soon as I get paid of course.
 
-# BUILD v23
-removed Bahkruums game. now universial
-- Updated GUI for a more clean look. aka i finally got paid
-Executor must support http calls and chat hooking. so like 40 to 50 S/UNC
-- added multi keys
-  this just means you can add more than one key at once, all storedc locally on your device. So if one key isnt responding it switches to next in line (if there is any tbh)
-- added more personalitys
-  - Catboy - very self explanitory
-- Tsundere - flushed easilly, often denying everything. we ALL know what this one is.
-- Yandere - yeah just dont pick this one, overally obbsesive and loving. a bit too loving and obbessive.
-- Kuudere - calm and aloof, but they warm up to a person they trust.
-- Dandere - often timid, (meaning they dont talk much,) often speaks well with a person they trust
-- Deredere - does NOT hide their feelings
-- Himedere  - very spoiled person, expects prince/princess quality treatment
+# BUILD v25
+SilentAI and **SilentStands**
+- Added Stands!
+  Commands:
+  !summon — aliases: s; summon and follow the owner.
+!vanish — alias: v; hide the stand.
+!follow [player] — alias: frame; defaults to owner.
+!stop — stop the current action.
+!help — aliases: cmds, commands.
+!chatcmd — toggle chat commands.
+!weld [on|off] — aliases: usewelding, targetweld.
+!multistand [on|off] — aliases: multi, multipos, multianim.
+!mutesound — aliases: mute, mutestand.
+!say <message> — alias: chat.
+Positions
+!back
+!left
+!right
+!line — aliases: row, lines.
+!x — alias: cross.
+!under
+!alt
+!orbit [speed]
+Animations
+!fly <preset|animation-id> — aliases: anim, animation.
+!emote <name|animation-id>
+!copyemote [player] — aliases: copyanim, mirroremote.
+!stopcopyemote — alias: stopmirror.
+!stopanim — alias: resetanim.
+!text <message> — one active stand per letter.
+!text off or !text clear — clear displayed text.
+Usage: [botname] ![command]
 # Minimum Specs for like running smoothly
 # IOS 16 or higher using a executor, though it will lag. recommended ios 18. iPhone 12.
 # any android with a snapdragon chip set.
