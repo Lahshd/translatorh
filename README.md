@@ -27,13 +27,13 @@ Executor must support http calls and chat hooking. so like 40 to 50 S/UNC
 - added multi keys
   this just means you can add more than one key at once, all storedc locally on your device. So if one key isnt responding it switches to next in line (if there is any tbh)
 - added more personalitys
-  Catboy - very self explanitory
-Tsundere - flushed easilly, often denying everything. we ALL know what this one is.
-Yandere - yeah just dont pick this one, overally obbsesive and loving. a bit too loving and obbessive.
-Kuudere - calm and aloof, but they warm up to a person they trust.
-Dandere - often timid, (meaning they dont talk much,) often speaks well with a person they trust
-Deredere - does NOT hide their feelings
-Himedere  - very spoiled person, expects prince/princess quality treatment
+  - Catboy - very self explanitory
+- Tsundere - flushed easilly, often denying everything. we ALL know what this one is.
+- Yandere - yeah just dont pick this one, overally obbsesive and loving. a bit too loving and obbessive.
+- Kuudere - calm and aloof, but they warm up to a person they trust.
+- Dandere - often timid, (meaning they dont talk much,) often speaks well with a person they trust
+- Deredere - does NOT hide their feelings
+- Himedere  - very spoiled person, expects prince/princess quality treatment
 # Minimum Specs for like running smoothly
 # IOS 16 or higher using a executor, though it will lag. recommended ios 18. iPhone 12.
 # any android with a snapdragon chip set.
