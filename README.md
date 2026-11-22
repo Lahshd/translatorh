@@ -12,3 +12,10 @@ Executor must support http calls and chat hooking. so like 40 to 50 S/UNC
 #IOS 16 or higher using a executor, though it will lag. recommended ios 18. iPhone 12.
 #any android with a snapdragon chip set.
 #Intel i3 Intergraded graphics. 
+
+
+loadstrings.
+PC
+loadstring(game:httpget("https://raw.githubusercontent.com/Lahshd/translatorh/refs/heads/main/silent%20ai%202.lua")
+MOBILE
+loadstring(game:httpget("https://raw.githubusercontent.com/Lahshd/translatorh/refs/heads/main/silentai2Mobile.lua")
