@@ -1,4 +1,5 @@
-local VERSION = "26"
+local VERSION = "27"
+-- One lifecycle per client, including when this script is executed again.
 local Environment = getgenv and getgenv() or _G
 if Environment.AIChatBotRuntime and Environment.AIChatBotRuntime.Stop then
     pcall(Environment.AIChatBotRuntime.Stop)
@@ -217,6 +218,8 @@ local Cfg = {
     Temperature       = 0.85,
     Enabled           = true,
     PublicCommands    = true,
+    VisionEnabled     = true,
+    VisionRange       = 35,
     RespondToAll      = false,
     RespondToNameOnly = false,
     TriggerKeywords   = "",
@@ -266,6 +269,7 @@ local SAVE_KEYS = {
     "SetupComplete", "Provider", "Model", "GroqKey", "GroqKeys", "ActiveKeyIndex",
     "SystemPrompt", "BotName", "ProximityRadius", "Cooldown",
     "MaxTokens", "Temperature", "Enabled", "PublicCommands",
+    "VisionEnabled", "VisionRange",
     "RespondToAll", "RespondToNameOnly", "TriggerKeywords", "WhisperMode", "ThinkDelay",
     "AutoGreet", "AutoGreetCooldown", "AutoFollow", "FollowDistance",
     "VCSupport", "VCIncludeContext", "LengthMode",
@@ -346,6 +350,7 @@ local function NormalizeCfg()
         GlobalCooldown    = {1, 60},
         RequestTimeout    = {5, 120},
         MemoryLimit       = {2, 100},
+        VisionRange       = {5, 150},
     }
     for key, range in pairs(bounds) do
         local value = tonumber(Cfg[key]) or tonumber(CONFIG_DEFAULTS[key]) or range[1]
@@ -491,7 +496,108 @@ local EMOTES = {
 }
 
 -- ═══════════════════════════════════════
--- THE SOCIETY STAND - SILENT STANDS
+-- FORWARD VISION SCANNER (RAYCAST)
+-- ═══════════════════════════════════════
+
+local function DescribeHitInstance(hitPart, dist)
+    if not hitPart or not hitPart:IsA("BasePart") then return nil end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character and hitPart:IsDescendantOf(plr.Character) then
+            local label = plr.DisplayName ~= plr.Name
+                and string.format("player %s (@%s)", plr.DisplayName, plr.Name)
+                or string.format("player %s", plr.Name)
+            return string.format("%s (%d studs)", label, math.round(dist))
+        end
+    end
+
+    local model = hitPart:FindFirstAncestorOfClass("Model")
+    if model and model ~= workspace then
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        if hum then
+            return string.format("NPC/character '%s' (%d studs)", model.Name, math.round(dist))
+        end
+        if hitPart:IsA("Seat") or hitPart:IsA("VehicleSeat") then
+            return string.format("%s '%s' (%d studs)", hitPart.ClassName, model.Name, math.round(dist))
+        end
+        if model.Name ~= "" and model.Name ~= "Model" then
+            return string.format("'%s' (%s, %d studs)", model.Name, hitPart.Name, math.round(dist))
+        end
+    end
+
+    if hitPart:IsA("Seat") or hitPart:IsA("VehicleSeat") then
+        return string.format("%s '%s' (%d studs)", hitPart.ClassName, hitPart.Name, math.round(dist))
+    end
+    return string.format("'%s' (%d studs)", hitPart.Name, math.round(dist))
+end
+
+local function ScanFrontVision(maxDist)
+    local char = LP.Character
+    local head = char and char:FindFirstChild("Head")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local originPart = head or hrp
+    if not originPart or not originPart:IsA("BasePart") then
+        return "Character not spawned yet."
+    end
+
+    local range = tonumber(maxDist) or tonumber(Cfg.VisionRange) or 35
+    local origin = originPart.Position + (originPart.CFrame.LookVector * 0.8)
+    local forward = Vector3.new(originPart.CFrame.LookVector.X, 0, originPart.CFrame.LookVector.Z)
+    if forward.Magnitude < 0.001 then
+        forward = originPart.CFrame.LookVector
+    else
+        forward = forward.Unit
+    end
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local filterList = {}
+    if char then table.insert(filterList, char) end
+    local bb = CoreGui:FindFirstChild("AIBotBillboard")
+    if bb then table.insert(filterList, bb) end
+    params.FilterDescendantsInstances = filterList
+    params.IgnoreWater = true
+
+    local anglesDeg = { 0, -14, 14, -28, 28 }
+    local found, seen = {}, {}
+
+    for _, deg in ipairs(anglesDeg) do
+        local rad = math.rad(deg)
+        local dir = CFrame.fromAxisAngle(Vector3.yAxis, rad):VectorToWorldSpace(forward).Unit * range
+        local ok, result = pcall(function()
+            return workspace:Raycast(origin, dir, params)
+        end)
+        if ok and result and result.Instance then
+            local dist = (result.Position - origin).Magnitude
+            local desc = DescribeHitInstance(result.Instance, dist)
+            if desc and not seen[desc] then
+                seen[desc] = true
+                table.insert(found, {
+                    text = desc,
+                    dist = dist,
+                    isCenter = (deg == 0),
+                })
+            end
+        end
+    end
+
+    if #found == 0 then
+        return string.format("Clear path ahead for %d studs.", math.round(range))
+    end
+
+    table.sort(found, function(a, b)
+        if a.isCenter ~= b.isCenter then return a.isCenter end
+        return a.dist < b.dist
+    end)
+
+    local summary = {}
+    for i = 1, math.min(#found, 4) do
+        table.insert(summary, found[i].text)
+    end
+    return table.concat(summary, ", ")
+end
+
+-- ═══════════════════════════════════════
+-- SOCIETYSTAND LAUNCHER HELPER
 -- ═══════════════════════════════════════
 
 local function ApplyAndExecuteSocietyStand()
@@ -528,7 +634,7 @@ local function ApplyAndExecuteSocietyStand()
 end
 
 -- ═══════════════════════════════════════
--- VOICE CHAT WITH PC.
+-- VOICE CHAT (VC) HELPER (NO TTS)
 -- ═══════════════════════════════════════
 
 local function GetVCStatus()
@@ -582,7 +688,7 @@ local function PromptVCAction()
 end
 
 -- ═══════════════════════════════════════
--- multi keyed
+-- CORE & MULTI-KEY GROQ API FUNCTIONS
 -- ═══════════════════════════════════════
 
 local function DoRequest(url, method, headers, body)
@@ -859,7 +965,7 @@ local function StepMovementToward(humanoid, hrp, char, goalPos, usePathfinding)
     local horizSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
     local flatGoalDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(goalPos.X, 0, goalPos.Z)).Magnitude
 
-    if flatGoalDist > 4 and horizSpeed < 12 then
+    if flatGoalDist > 4 and horizSpeed < 16 then
         if not BotAction.slowSince then
             BotAction.slowSince = now
         elseif now - BotAction.slowSince >= 0.45 then
@@ -895,7 +1001,7 @@ local function StepMovementToward(humanoid, hrp, char, goalPos, usePathfinding)
 end
 
 -- ═══════════════════════════════════════
--- AI
+-- CHAT & AI HELPERS
 -- ═══════════════════════════════════════
 
 local function ParseAIText(raw)
@@ -992,7 +1098,7 @@ local function SendChat(msg)
     local channel = GetGeneralChannel()
     if not channel or not channel:IsA("TextChannel") then return false, "RBXGeneral chat channel is unavailable." end
     if Cfg.WhisperMode then
-        local escaped = fullMsg:gsub("&", "&"):gsub("<", "<"):gsub(">", ">")
+        local escaped = fullMsg:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
         local ok = pcall(function() channel:DisplaySystemMessage("[Local preview] " .. escaped) end)
         if not ok then return false, "Could not show local preview." end
         return true, nil, fullMsg:sub(#(Cfg.ChatPrefix or "") + 1)
@@ -1028,7 +1134,7 @@ local function ExportChatLog()
 end
 
 -- ═══════════════════════════════════════
---AI MESSAGING WITH THE FUCK ASS ROLLOVER
+-- GROQ AI MESSAGING (WITH UNLIMITED KEY FAILOVER)
 -- ═══════════════════════════════════════
 
 local function BuildSystemMsg(nearby)
@@ -1041,6 +1147,9 @@ local function BuildSystemMsg(nearby)
         "Your Roblox username: " .. LP.Name .. (LP.DisplayName ~= LP.Name and " (display: " .. LP.DisplayName .. ")" or ""),
         "Local operator: " .. BOT_OWNER .. ". You are SilentAI; be honest about that if asked.",
     }
+    if Cfg.VisionEnabled then
+        table.insert(ctx, "What is directly in front of you: " .. ScanFrontVision(Cfg.VisionRange))
+    end
     if BotAction.mode ~= "none" then
         table.insert(ctx, "Current movement action: " .. BotAction.mode .. (BotAction.targetLabel ~= "" and (" -> " .. BotAction.targetLabel) or ""))
     end
@@ -1669,6 +1778,14 @@ local function HandleSlashCommand(text)
         StopBotMovement(true)
         SafeNotify({ Title = "Stopped", Content = "Movement and emote stopped." })
         return true
+    elseif cmd == "vision" then
+        Cfg.VisionEnabled = ParseBoolArg(argument, Cfg.VisionEnabled)
+        SaveCfg()
+        SafeNotify({ Title = "Forward Vision", Content = Cfg.VisionEnabled and "Enabled" or "Disabled" })
+        return true
+    elseif cmd == "look" then
+        SafeNotify({ Title = "In Front", Content = ScanFrontVision(Cfg.VisionRange), Duration = 8 })
+        return true
     elseif cmd == "follow" then
         local arg = argument:lower()
         if arg == "on" then Cfg.AutoFollow = true; SaveCfg()
@@ -1693,11 +1810,11 @@ local function HandleSlashCommand(text)
     elseif cmd == "status" then
         SafeNotify({
             Title = "SilentAI status",
-            Content = string.format("Groq (%d keys, #%d active) | %s\nAction: %s | Queue: %d", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, #MsgQueue),
+            Content = string.format("Groq (%d keys, #%d active) | %s\nAction: %s | Vision: %s | Queue: %d", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, Cfg.VisionEnabled and "ON" or "OFF", #MsgQueue),
         })
         return true
     else
-        SafeNotify({ Title = "Commands", Content = "/ai on, off, stop, follow [on|off], vc, keys, clear, model MODEL_ID, status" })
+        SafeNotify({ Title = "Commands", Content = "/ai on, off, stop, vision [on|off], look, follow [on|off], vc, keys, clear, model MODEL_ID, status" })
         return true
     end
     SafeNotify({ Title = "SilentAI", Content = "Command applied: " .. cmd })
@@ -2954,6 +3071,28 @@ TabEmotes:CreateButton({ name = "Stop current emote", callback = function() Stop
 
 -- ─── Settings ───
 local TabSettings = Win:CreateTab({ name = "Settings" })
+TabSettings:CreateSection({ name = "Forward vision" })
+TabSettings:CreateToggle({
+    name = "Scan what is in front of character",
+    value = Cfg.VisionEnabled,
+    callback = function(v) Cfg.VisionEnabled = v; SaveCfg() end,
+    forgetState = true,
+})
+TabSettings:CreateSlider({
+    name = "Forward scan distance (studs)",
+    increment = 5,
+    range = {5, 150},
+    value = Cfg.VisionRange,
+    callback = function(v) Cfg.VisionRange = v; SaveCfg() end,
+    forgetState = true,
+})
+TabSettings:CreateButton({
+    name = "Scan what is in front now",
+    callback = function()
+        SafeNotify({ Title = "Forward Vision", Content = ScanFrontVision(Cfg.VisionRange), Duration = 8 })
+    end,
+})
+
 TabSettings:CreateSection({ name = "Interface & memory" })
 TabSettings:CreateToggle({ name = "Show Status Billboard", value = Cfg.ShowBillboard, callback = function(v) Cfg.ShowBillboard = v; UpdateBillboard(); SaveCfg() end, forgetState = true })
 TabSettings:CreateSlider({
@@ -3006,7 +3145,7 @@ TabSettings:CreateSlider({ name = "Request timeout (seconds)", increment = 5, ra
 TabSettings:CreateSection({ name = "Help & unload" })
 TabSettings:CreateText({
     name = "Commands & shortcuts",
-    text = "!follow (!frame) • !come • !goto <target> • !stop • !chatcmd • !say <msg> • !emote • !stopanim\nK toggles the control panel.",
+    text = "!follow (!frame) • !come • !goto <target> • !stop • !chatcmd • !say <msg> • !emote • !stopanim\n/ai look • /ai vision [on|off] • K toggles the control panel.",
 })
 TabSettings:CreateButton({
     name = "Save Settings Now",
