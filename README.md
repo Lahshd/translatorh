@@ -3,15 +3,15 @@
 yeah its an AI alright, dont tesh me
 
 BEST PAIRED WITH:
-**SilentStands** - OUT NOW
-**The Stand Society** - made by Flow, best option so far, contains a gui and shit. (unforunatly **delta** does not support webhooking)
+**SilentStands** - its just The Stand Society paired with a converter for deltas webhook shi
+**The Stand Society** - made by Flow, best option so far, contains a gui and shit.
 
 LINKS
 **SilentStands** - OUT NOW, included in script. 
 **The Stand Society** - https://discord.gg/Aknd49ARke <<< get the script here for their stand.
 
 # VERY BIG DISCLAMER.
-we are **neither associated** with **The Stand Society**, rather we just promote it. We are also **Not promoted or accosiacted** by any affiliates yet.
+we are **neither associated** with **The Stand Society**, rather we just promote it. We are also **Not endorsed or accosiacted** by any affiliates yet.
 
 # literally just me coding with no idea how to use a fucking library... im crine
 
