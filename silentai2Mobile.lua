@@ -1,5 +1,4 @@
-local VERSION = "25"
--- One lifecycle per client, including when this script is executed again.
+local VERSION = "26"
 local Environment = getgenv and getgenv() or _G
 if Environment.AIChatBotRuntime and Environment.AIChatBotRuntime.Stop then
     pcall(Environment.AIChatBotRuntime.Stop)
@@ -77,7 +76,6 @@ local HttpService        = game:GetService("HttpService")
 local TweenService       = game:GetService("TweenService")
 local UserInputService   = game:GetService("UserInputService")
 local PathfindingService = game:GetService("PathfindingService")
-local RunService         = game:GetService("RunService")
 local CoreGui            = game:GetService("CoreGui")
 
 local VoiceChatService
@@ -191,12 +189,6 @@ local PERSONALITIES = {
         prompt = "You are a himedere Roblox player. Haughty, regal, and dramatic, expecting to be treated like royalty while playfully looking down on 'commoners' yet still helping them." .. EMOTE_RULE,
     },
     {
-        name = "SilentStands",
-        emoji = "⚡",
-        color = Color3.fromRGB(175, 110, 255),
-        prompt = "You are SilentStands, a powerful JoJo-style Stand manifestation bound to your user. Speak with bold presence, dramatic flair, and occasional 'ORA!' or 'Yare yare...' energy while obeying your user." .. EMOTE_RULE,
-    },
-    {
         name = "Custom",
         emoji = "✏️",
         color = Color3.fromRGB(100, 100, 255),
@@ -208,13 +200,6 @@ local LENGTH_MODES = {
     { name = "Quick",   suffix = " Reply in ONE short sentence only.",   maxTok = 60  },
     { name = "Normal",  suffix = " Keep replies SHORT (1-2 sentences).", maxTok = 120 },
     { name = "Verbose", suffix = " You can write a longer paragraph.",   maxTok = 300 },
-}
-
-local FLY_PRESETS = {
-    hover = { anim = "rbxassetid://507766388", offsetY = 2.6, amp = 0.45, speed = 3.2 },
-    glide = { anim = "rbxassetid://507767968", offsetY = 2.2, amp = 0.25, speed = 2.0 },
-    float = { anim = "rbxassetid://507776043", offsetY = 3.2, amp = 0.65, speed = 2.5 },
-    rush  = { anim = "rbxassetid://507771019", offsetY = 1.6, amp = 0.30, speed = 9.0 },
 }
 
 local Cfg = {
@@ -232,15 +217,6 @@ local Cfg = {
     Temperature       = 0.85,
     Enabled           = true,
     PublicCommands    = true,
-    StandEnabled      = false,
-    StandName         = "SilentStands",
-    StandCry           = "ORA ORA ORA!",
-    StandAI           = true,
-    StandWeld         = true,
-    MultiStand        = false,
-    MuteStandSound    = false,
-    StandPosition     = "back",
-    OrbitSpeed        = 3.0,
     RespondToAll      = false,
     RespondToNameOnly = false,
     TriggerKeywords   = "",
@@ -268,13 +244,28 @@ local Cfg = {
     MemoryLimit       = 30,
 }
 
+local SocietyStandCfg = {
+    Credits = "https://discord.gg/Aknd49ARke | If you pay for this script you get scammed this script is completely free for use",
+    Main = {
+        Owner = "username",
+        CustomName = "Master",
+        CustomPrefix = "!",
+        PrefixAT = "Before",
+        Position = "Back",
+        CustomSummon = "s",
+        FlyAnim = "fly3",
+        ChatCommands = false,
+        UseWelding = true,
+        Password = "changeme",
+    },
+    ScriptUrl = "https://raw.githubusercontent.com/Xehh0/V4/refs/heads/main/init.luau",
+}
+
 local SAVE_FILE = "aichatbot_groq_cfg_v1.json"
 local SAVE_KEYS = {
     "SetupComplete", "Provider", "Model", "GroqKey", "GroqKeys", "ActiveKeyIndex",
     "SystemPrompt", "BotName", "ProximityRadius", "Cooldown",
     "MaxTokens", "Temperature", "Enabled", "PublicCommands",
-    "StandEnabled", "StandName", "StandCry", "StandAI",
-    "StandWeld", "MultiStand", "MuteStandSound", "StandPosition", "OrbitSpeed",
     "RespondToAll", "RespondToNameOnly", "TriggerKeywords", "WhisperMode", "ThinkDelay",
     "AutoGreet", "AutoGreetCooldown", "AutoFollow", "FollowDistance",
     "VCSupport", "VCIncludeContext", "LengthMode",
@@ -355,13 +346,12 @@ local function NormalizeCfg()
         GlobalCooldown    = {1, 60},
         RequestTimeout    = {5, 120},
         MemoryLimit       = {2, 100},
-        OrbitSpeed        = {0.5, 20},
     }
     for key, range in pairs(bounds) do
         local value = tonumber(Cfg[key]) or tonumber(CONFIG_DEFAULTS[key]) or range[1]
         if value ~= value or math.abs(value) == math.huge then value = CONFIG_DEFAULTS[key] end
         Cfg[key] = math.clamp(value, range[1], range[2])
-        if key ~= "Temperature" and key ~= "OrbitSpeed" then Cfg[key] = math.floor(Cfg[key]) end
+        if key ~= "Temperature" then Cfg[key] = math.floor(Cfg[key]) end
     end
     Cfg.MemoryLimit = Cfg.MemoryLimit - Cfg.MemoryLimit % 2
     for _, key in ipairs({"Whitelist", "Blacklist"}) do
@@ -378,8 +368,6 @@ local function NormalizeCfg()
         Cfg[key] = clean
     end
     Cfg.BotName = Truncate(Trim(Cfg.BotName) ~= "" and Trim(Cfg.BotName) or "SilentAI", 32)
-    Cfg.StandName = Truncate(Trim(Cfg.StandName) ~= "" and Trim(Cfg.StandName) or "SilentStands", 36)
-    Cfg.StandCry = Truncate(Trim(Cfg.StandCry) ~= "" and Trim(Cfg.StandCry) or "ORA ORA ORA!", 60)
     Cfg.ChatPrefix = Truncate(Cfg.ChatPrefix, 40)
     Cfg.TriggerKeywords = Truncate(Trim(Cfg.TriggerKeywords), 240)
     if Cfg.SetupStyle ~= "Windows" and Cfg.SetupStyle ~= "macOS" then Cfg.SetupStyle = "Auto" end
@@ -503,7 +491,44 @@ local EMOTES = {
 }
 
 -- ═══════════════════════════════════════
--- VOICE CHAT (VC) HELPER (NO TTS)
+-- THE SOCIETY STAND - SILENT STANDS
+-- ═══════════════════════════════════════
+
+local function ApplyAndExecuteSocietyStand()
+    local g = getgenv and getgenv() or _G
+    g.Credits = tostring(SocietyStandCfg.Credits or "")
+    g.SocietyStand = {
+        Main = {
+            Owner = tostring(SocietyStandCfg.Main.Owner or "username"),
+            CustomName = tostring(SocietyStandCfg.Main.CustomName or "Master"),
+            CustomPrefix = tostring(SocietyStandCfg.Main.CustomPrefix or "!"),
+            PrefixAT = tostring(SocietyStandCfg.Main.PrefixAT or "Before"),
+            Position = tostring(SocietyStandCfg.Main.Position or "Back"),
+            CustomSummon = tostring(SocietyStandCfg.Main.CustomSummon or "s"),
+            FlyAnim = tostring(SocietyStandCfg.Main.FlyAnim or "fly3"),
+            ChatCommands = SocietyStandCfg.Main.ChatCommands == true,
+            UseWelding = SocietyStandCfg.Main.UseWelding == true,
+            Password = tostring(SocietyStandCfg.Main.Password or "changeme"),
+        }
+    }
+
+    local url = Trim(SocietyStandCfg.ScriptUrl)
+    if url == "" then
+        url = "https://raw.githubusercontent.com/Xehh0/V4/refs/heads/main/init.luau"
+    end
+
+    local ok, err = pcall(function()
+        loadstring(game:HttpGet(url))()
+    end)
+    if ok then
+        SafeNotify({ Title = "SocietyStand", Content = "Applied settings and executed SocietyStand." })
+    else
+        SafeNotify({ Title = "SocietyStand error", Content = tostring(err), Duration = 8 })
+    end
+end
+
+-- ═══════════════════════════════════════
+-- VOICE CHAT WITH PC.
 -- ═══════════════════════════════════════
 
 local function GetVCStatus()
@@ -557,387 +582,7 @@ local function PromptVCAction()
 end
 
 -- ═══════════════════════════════════════
--- SILENTSTANDS SYSTEM (MOTOR6D + WELD + MULTI + TEXT)
--- ═══════════════════════════════════════
-
-local StandRig = {
-    model = nil,
-    core = nil,
-    armL = nil,
-    armR = nil,
-    motor = nil,
-    weld = nil,
-    sound = nil,
-    rushUntil = 0,
-    stance = "guard",
-    flyMode = nil,
-    flyOffsetY = 0,
-    flyAmp = 0.22,
-    flySpeed = 3.5,
-    copiedTrack = nil,
-    clones = {},
-    textFolder = nil,
-    textParts = {},
-}
-
-local function ApplyStandSoundMute()
-    if StandRig.sound then
-        pcall(function()
-            StandRig.sound.Volume = Cfg.MuteStandSound and 0 or 0.65
-        end)
-    end
-end
-
-local function ClearStandText()
-    for _, part in ipairs(StandRig.textParts) do
-        pcall(function() part:Destroy() end)
-    end
-    table.clear(StandRig.textParts)
-    if StandRig.textFolder then
-        pcall(function() StandRig.textFolder:Destroy() end)
-        StandRig.textFolder = nil
-    end
-end
-
-local function ClearStandClones()
-    for _, clone in ipairs(StandRig.clones) do
-        pcall(function() clone:Destroy() end)
-    end
-    table.clear(StandRig.clones)
-end
-
-local function StopCopiedEmote()
-    if StandRig.copiedTrack then
-        pcall(function()
-            StandRig.copiedTrack:Stop()
-            StandRig.copiedTrack:Destroy()
-        end)
-        StandRig.copiedTrack = nil
-    end
-end
-
-local function DestroyStandRig()
-    StopCopiedEmote()
-    ClearStandClones()
-    ClearStandText()
-    if StandRig.weld then
-        pcall(function() StandRig.weld:Destroy() end)
-        StandRig.weld = nil
-    end
-    if StandRig.motor then
-        pcall(function() StandRig.motor:Destroy() end)
-        StandRig.motor = nil
-    end
-    if StandRig.model then
-        pcall(function() StandRig.model:Destroy() end)
-        StandRig.model = nil
-    end
-    StandRig.core = nil
-    StandRig.armL = nil
-    StandRig.armR = nil
-    StandRig.sound = nil
-    StandRig.stance = "guard"
-end
-
-local function SyncStandAttachment(root)
-    if not StandRig.core or not root then return end
-    if Cfg.StandWeld then
-        if not StandRig.weld or not StandRig.weld.Parent then
-            local w = Instance.new("WeldConstraint")
-            w.Name = "StandWeldConstraint"
-            w.Part0 = root
-            w.Part1 = StandRig.core
-            w.Parent = root
-            StandRig.weld = w
-        end
-    elseif StandRig.weld then
-        pcall(function() StandRig.weld:Destroy() end)
-        StandRig.weld = nil
-    end
-    if not StandRig.motor or not StandRig.motor.Parent then
-        local m6d = Instance.new("Motor6D")
-        m6d.Name = "SilentStandsJoint"
-        m6d.Part0 = root
-        m6d.Part1 = StandRig.core
-        m6d.C0 = CFrame.new(1.35, 1.35, 2.15)
-        m6d.C1 = CFrame.new()
-        m6d.Parent = root
-        StandRig.motor = m6d
-    end
-end
-
-local function BuildStandRig()
-    DestroyStandRig()
-    local char = LP.Character
-    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
-    if not char or not root or not root:IsA("BasePart") then return false end
-
-    local standModel = Instance.new("Model")
-    standModel.Name = "SilentStands_" .. (Cfg.StandName:gsub("[^%w_]", ""))
-
-    local core = Instance.new("Part")
-    core.Name = "StandCore"
-    core.Size = Vector3.new(2.1, 2.5, 1.2)
-    core.Material = Enum.Material.Neon
-    core.Color = Color3.fromRGB(165, 95, 255)
-    core.Transparency = 0.25
-    core.CanCollide = false
-    core.Massless = true
-    core.Anchored = false
-    core.CFrame = root.CFrame * CFrame.new(0, 1.5, 2.2)
-    core.Parent = standModel
-
-    local armL = Instance.new("Part")
-    armL.Name = "StandLeftFist"
-    armL.Size = Vector3.new(0.75, 0.75, 1.6)
-    armL.Material = Enum.Material.Neon
-    armL.Color = Color3.fromRGB(210, 150, 255)
-    armL.Transparency = 0.2
-    armL.CanCollide = false
-    armL.Massless = true
-    armL.Anchored = false
-    armL.CFrame = core.CFrame * CFrame.new(-1.45, 0.2, -0.7)
-    armL.Parent = standModel
-
-    local armR = Instance.new("Part")
-    armR.Name = "StandRightFist"
-    armR.Size = Vector3.new(0.75, 0.75, 1.6)
-    armR.Material = Enum.Material.Neon
-    armR.Color = Color3.fromRGB(210, 150, 255)
-    armR.Transparency = 0.2
-    armR.CanCollide = false
-    armR.Massless = true
-    armR.Anchored = false
-    armR.CFrame = core.CFrame * CFrame.new(1.45, 0.2, -0.7)
-    armR.Parent = standModel
-
-    for _, fist in ipairs({ armL, armR }) do
-        local w = Instance.new("WeldConstraint")
-        w.Part0 = core
-        w.Part1 = fist
-        w.Parent = core
-    end
-
-    local snd = Instance.new("Sound")
-    snd.Name = "StandAuraSound"
-    snd.SoundId = "rbxassetid://9118823102"
-    snd.Volume = Cfg.MuteStandSound and 0 or 0.65
-    snd.Looped = false
-    snd.Parent = core
-
-    standModel.PrimaryPart = core
-    standModel.Parent = char
-
-    StandRig.model = standModel
-    StandRig.core = core
-    StandRig.armL = armL
-    StandRig.armR = armR
-    StandRig.sound = snd
-    SyncStandAttachment(root)
-    return true
-end
-
-local function EnsureMultiStandClones(count)
-    if not Cfg.MultiStand or not StandRig.core then
-        ClearStandClones()
-        return
-    end
-    while #StandRig.clones > count do
-        local old = table.remove(StandRig.clones)
-        pcall(function() old:Destroy() end)
-    end
-    while #StandRig.clones < count do
-        local idx = #StandRig.clones + 1
-        local p = Instance.new("Part")
-        p.Name = "SilentStandClone_" .. tostring(idx)
-        p.Size = Vector3.new(1.5, 1.9, 1.0)
-        p.Material = Enum.Material.Neon
-        p.Color = Color3.fromRGB(185, 125, 255)
-        p.Transparency = 0.35
-        p.CanCollide = false
-        p.Massless = true
-        p.Anchored = true
-        p.Parent = StandRig.model or workspace
-        table.insert(StandRig.clones, p)
-    end
-end
-
-local function SetStandText(message)
-    ClearStandText()
-    local clean = Trim(message)
-    if clean == "" or clean:lower() == "off" or clean:lower() == "clear" then
-        return false, "Cleared Stand text."
-    end
-    if not Cfg.StandEnabled then
-        Cfg.StandEnabled = true
-        BuildStandRig()
-    end
-    local folder = Instance.new("Folder")
-    folder.Name = "SilentStandsText"
-    folder.Parent = workspace
-    StandRig.textFolder = folder
-
-    local chars = {}
-    for _, code in utf8.codes(clean) do
-        local ch = utf8.char(code)
-        if ch ~= " " then
-            table.insert(chars, ch)
-        end
-        if #chars >= 24 then break end
-    end
-
-    for i, ch in ipairs(chars) do
-        local part = Instance.new("Part")
-        part.Name = "StandLetter_" .. tostring(i)
-        part.Size = Vector3.new(1.3, 1.5, 0.5)
-        part.Material = Enum.Material.Neon
-        part.Color = Color3.fromRGB(165, 95, 255)
-        part.Transparency = 0.25
-        part.CanCollide = false
-        part.Massless = true
-        part.Anchored = true
-        part.Parent = folder
-
-        local bb = Instance.new("BillboardGui")
-        bb.Size = UDim2.fromOffset(56, 56)
-        bb.AlwaysOnTop = true
-        bb.Adornee = part
-        bb.Parent = part
-
-        local lbl = Instance.new("TextLabel")
-        lbl.Size = UDim2.fromScale(1, 1)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = ch
-        lbl.TextColor3 = Color3.fromRGB(250, 240, 255)
-        lbl.Font = Enum.Font.GothamBlack
-        lbl.TextScaled = true
-        lbl.Parent = bb
-
-        table.insert(StandRig.textParts, { part = part, index = i, total = #chars })
-    end
-
-    return true, string.format("Displayed %d Stand letter(s) for '%s'.", #chars, clean)
-end
-
-local function SetStandEnabled(enabled)
-    Cfg.StandEnabled = enabled
-    if enabled then
-        BuildStandRig()
-        if not Cfg.MuteStandSound and StandRig.sound then
-            pcall(function() StandRig.sound:Play() end)
-        end
-    else
-        DestroyStandRig()
-    end
-    SaveCfg()
-end
-
-local function TriggerStandRush(duration)
-    if not Cfg.StandEnabled then
-        SetStandEnabled(true)
-    elseif not StandRig.motor then
-        BuildStandRig()
-    end
-    StandRig.stance = "rush"
-    StandRig.rushUntil = os.clock() + (tonumber(duration) or 2.2)
-    if not Cfg.MuteStandSound and StandRig.sound then
-        pcall(function() StandRig.sound:Play() end)
-    end
-end
-
-local function ComputePositionOffset(posName, t)
-    local mode = (posName or Cfg.StandPosition or "back"):lower()
-    if mode == "left" then
-        return CFrame.new(-3.2, 1.35, 0.2)
-    elseif mode == "right" then
-        return CFrame.new(3.2, 1.35, 0.2)
-    elseif mode == "under" then
-        return CFrame.new(0, -2.2, 0)
-    elseif mode == "alt" then
-        return CFrame.new(-1.8, 1.8, 2.4)
-    elseif mode == "line" or mode == "row" or mode == "lines" then
-        return CFrame.new(0, 1.4, 3.2)
-    elseif mode == "x" or mode == "cross" then
-        return CFrame.new(2.2, 1.6, 2.2)
-    elseif mode == "orbit" then
-        local angle = t * (tonumber(Cfg.OrbitSpeed) or 3.0)
-        return CFrame.new(math.cos(angle) * 4.2, 1.4, math.sin(angle) * 4.2)
-    else
-        return CFrame.new(1.35, 1.35, 2.15)
-    end
-end
-
-Runtime.Connect(RunService.RenderStepped, function()
-    if not Runtime.alive or not Cfg.StandEnabled then return end
-    local char = LP.Character
-    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
-    if not char or not root then return end
-    if not StandRig.core or not StandRig.core.Parent then
-        BuildStandRig()
-    end
-    SyncStandAttachment(root)
-    if not StandRig.motor or not StandRig.core then return end
-
-    local t = os.clock()
-    local bobY = math.sin(t * StandRig.flySpeed) * StandRig.flyAmp + StandRig.flyOffsetY
-    if t < StandRig.rushUntil then
-        StandRig.stance = "rush"
-        local punchWave = math.sin(t * 28) * 1.4
-        local swayX = math.cos(t * 22) * 0.45
-        StandRig.motor.Transform = CFrame.new(swayX - 1.25, 0.35 + bobY, -2.35 - punchWave)
-    else
-        StandRig.stance = "guard"
-        local baseOffset = ComputePositionOffset(Cfg.StandPosition, t)
-        StandRig.motor.Transform = baseOffset * CFrame.new(0, bobY, 0)
-    end
-
-    -- Multi-Stand formation clones
-    if Cfg.MultiStand then
-        local count = (Cfg.StandPosition == "line" or Cfg.StandPosition == "x") and 4 or 3
-        EnsureMultiStandClones(count)
-        for idx, part in ipairs(StandRig.clones) do
-            local targetCF = root.CFrame
-            if Cfg.StandPosition == "line" then
-                targetCF = root.CFrame * CFrame.new((idx - 2) * 2.4, 1.4, 3.2 + bobY)
-            elseif Cfg.StandPosition == "x" then
-                local sx = (idx % 2 == 0) and 2.5 or -2.5
-                local sz = (idx <= 2) and 2.5 or -2.5
-                targetCF = root.CFrame * CFrame.new(sx, 1.5 + bobY, sz)
-            else
-                local ang = t * (tonumber(Cfg.OrbitSpeed) or 2.5) + (idx * (math.pi * 2 / count))
-                targetCF = root.CFrame * CFrame.new(math.cos(ang) * 3.6, 1.4 + bobY, math.sin(ang) * 3.6)
-            end
-            pcall(function() part.CFrame = targetCF end)
-        end
-    elseif #StandRig.clones > 0 then
-        ClearStandClones()
-    end
-
-    -- Stand Text letters (1 stand block per character)
-    if #StandRig.textParts > 0 then
-        local total = #StandRig.textParts
-        local spacing = 1.65
-        local startX = -((total - 1) * spacing) * 0.5
-        for _, entry in ipairs(StandRig.textParts) do
-            local xOff = startX + (entry.index - 1) * spacing
-            local waveY = math.sin(t * 4.0 + entry.index * 0.5) * 0.25
-            local cf = root.CFrame * CFrame.new(xOff, 3.6 + waveY, -2.5)
-            pcall(function() entry.part.CFrame = cf end)
-        end
-    end
-end)
-
-Runtime.Connect(LP.CharacterAdded, function()
-    if Cfg.StandEnabled then
-        task.wait(0.35)
-        if Runtime.alive and Cfg.StandEnabled then BuildStandRig() end
-    end
-end)
-
-table.insert(Runtime.cleanups, DestroyStandRig)
-
--- ═══════════════════════════════════════
--- CORE & MULTI-KEY GROQ API FUNCTIONS
+-- multi keyed
 -- ═══════════════════════════════════════
 
 local function DoRequest(url, method, headers, body)
@@ -1028,150 +673,27 @@ local function StopEmote()
     end
 end
 
-local function StopAllAnimations()
-    StopEmote()
-    StopCopiedEmote()
-    StandRig.flyMode = nil
-    StandRig.flyOffsetY = 0
-    StandRig.flyAmp = 0.22
-    StandRig.flySpeed = 3.5
-    local char = LP.Character
-    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-    if animator then
-        pcall(function()
-            for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
-                tr:Stop(0.15)
-            end
-        end)
-    end
-end
-
-local function PlayAnimationId(animId, looped, duration, isCopyTrack)
-    if not Runtime.alive or type(animId) ~= "string" or animId == "" then return false end
-    local cleanId = animId:match("^%d+$") and ("rbxassetid://" .. animId) or animId
+local function PlayEmote(nameOrId)
+    if not Runtime.alive or type(nameOrId) ~= "string" or nameOrId == "" then return false end
+    local upper = Trim(nameOrId):upper()
+    local animId = EMOTES[upper] or (Trim(nameOrId):match("^%d+$") and ("rbxassetid://" .. Trim(nameOrId))) or Trim(nameOrId)
+    if type(animId) ~= "string" or animId == "" then return false end
     local character = LP.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
     if not animator then return false end
+    StopEmote()
     local animation = Instance.new("Animation")
-    animation.AnimationId = cleanId
+    animation.AnimationId = animId
     local ok, track = pcall(function() return animator:LoadAnimation(animation) end)
     animation:Destroy()
     if not ok or not track then return false end
-    if isCopyTrack then
-        StopCopiedEmote()
-        StandRig.copiedTrack = track
-    else
-        StopEmote()
-        Runtime.emoteTrack = track
-    end
-    pcall(function() track.Priority = Enum.AnimationPriority.Action end)
-    if looped ~= nil then pcall(function() track.Looped = looped end) end
+    Runtime.emoteTrack = track
     track:Play()
-    if duration and duration > 0 then
-        task.delay(duration, function()
-            if isCopyTrack and StandRig.copiedTrack == track then
-                StopCopiedEmote()
-            elseif not isCopyTrack and Runtime.emoteTrack == track then
-                StopEmote()
-            end
-        end)
-    end
+    task.delay(4, function()
+        if Runtime.emoteTrack == track then StopEmote() end
+    end)
     return true
-end
-
-local function PlayEmote(nameOrId)
-    if type(nameOrId) ~= "string" or nameOrId == "" then return false, "Specify an emote name or animation ID." end
-    local upper = Trim(nameOrId):upper()
-    if EMOTES[upper] then
-        local ok = PlayAnimationId(EMOTES[upper], false, 3.5, false)
-        return ok, ok and ("Playing emote: " .. upper) or "Could not play emote."
-    end
-    local ok = PlayAnimationId(Trim(nameOrId), false, 4.0, false)
-    return ok, ok and ("Playing animation: " .. Trim(nameOrId)) or "Invalid animation ID."
-end
-
-local function PlayFlyPreset(arg)
-    local raw = Trim(arg or "hover"):lower()
-    if not Cfg.StandEnabled then
-        SetStandEnabled(true)
-    end
-    local preset = FLY_PRESETS[raw]
-    if preset then
-        StandRig.flyMode = raw
-        StandRig.flyOffsetY = preset.offsetY
-        StandRig.flyAmp = preset.amp
-        StandRig.flySpeed = preset.speed
-        PlayAnimationId(preset.anim, true, 12, false)
-        return true, "Stand fly mode: " .. raw
-    end
-    if raw ~= "" then
-        StandRig.flyMode = "custom"
-        StandRig.flyOffsetY = 2.4
-        StandRig.flyAmp = 0.4
-        local ok = PlayAnimationId(Trim(arg), true, 12, false)
-        return ok, ok and ("Stand flying with animation: " .. Trim(arg)) or "Invalid fly preset or animation ID."
-    end
-    return false, "Usage: !fly <hover|glide|float|rush|animation-id>"
-end
-
-local DEFAULT_LOCOMOTION_IDS = {
-    ["507766388"] = true, ["507766666"] = true, ["507766951"] = true,
-    ["507777826"] = true, ["913402848"] = true, ["507767714"] = true,
-    ["507765000"] = true, ["507767968"] = true, ["507765644"] = true,
-    ["507784897"] = true, ["507785072"] = true, ["2506281703"] = true,
-    ["180435571"] = true, ["180435792"] = true, ["180426354"] = true,
-    ["125750702"] = true, ["180436148"] = true, ["180436334"] = true,
-    ["178130996"] = true, ["180435342"] = true,
-}
-
-local function CopyPlayerEmote(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character then
-        return false, "Target player has no character loaded."
-    end
-    local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-    if not animator then
-        return false, "Could not inspect player animations."
-    end
-    local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
-    if not ok or type(tracks) ~= "table" or #tracks == 0 then
-        return false, targetPlayer.DisplayName .. " isn't playing any animations."
-    end
-
-    local chosenTrack = nil
-    local fallbackTrack = nil
-    for _, tr in ipairs(tracks) do
-        local anim = tr.Animation
-        local id = anim and anim.AnimationId or ""
-        local numId = id:match("(%d+)")
-        if id ~= "" and not id:find("0$") then
-            if numId and not DEFAULT_LOCOMOTION_IDS[numId] then
-                if tr.Priority == Enum.AnimationPriority.Action
-                    or tr.Priority == Enum.AnimationPriority.Action2
-                    or tr.Priority == Enum.AnimationPriority.Action3
-                    or tr.Priority == Enum.AnimationPriority.Action4
-                    or not chosenTrack then
-                    chosenTrack = tr
-                end
-            elseif not fallbackTrack then
-                fallbackTrack = tr
-            end
-        end
-    end
-
-    local targetTrack = chosenTrack or fallbackTrack
-    if not targetTrack or not targetTrack.Animation then
-        return false, "No copyable emote found on " .. targetPlayer.DisplayName .. "."
-    end
-
-    local animId = targetTrack.Animation.AnimationId
-    local started = PlayAnimationId(animId, targetTrack.Looped, targetTrack.Looped and 20 or 6, true)
-    if not started then
-        return false, "Failed to load animation (" .. tostring(animId) .. ")."
-    end
-    return true, "Copied emote from " .. targetPlayer.DisplayName .. "!"
 end
 
 -- ═══════════════════════════════════════
@@ -1266,10 +788,7 @@ local function StopBotMovement(alsoStopEmote)
     BotAction.targetLabel = ""
     ResetPathState()
     Cfg.AutoFollow = false
-    if Cfg.StandPosition == "orbit" then
-        Cfg.StandPosition = "back"
-    end
-    if alsoStopEmote then StopAllAnimations() end
+    if alsoStopEmote then StopEmote() end
     local char = LP.Character
     local humanoid = char and char:FindFirstChildOfClass("Humanoid")
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -1340,7 +859,7 @@ local function StepMovementToward(humanoid, hrp, char, goalPos, usePathfinding)
     local horizSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
     local flatGoalDist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(goalPos.X, 0, goalPos.Z)).Magnitude
 
-    if flatGoalDist > 4 and horizSpeed < 16 then
+    if flatGoalDist > 4 and horizSpeed < 12 then
         if not BotAction.slowSince then
             BotAction.slowSince = now
         elseif now - BotAction.slowSince >= 0.45 then
@@ -1376,7 +895,7 @@ local function StepMovementToward(humanoid, hrp, char, goalPos, usePathfinding)
 end
 
 -- ═══════════════════════════════════════
--- CHAT & AI HELPERS
+-- AI
 -- ═══════════════════════════════════════
 
 local function ParseAIText(raw)
@@ -1509,7 +1028,7 @@ local function ExportChatLog()
 end
 
 -- ═══════════════════════════════════════
--- GROQ AI MESSAGING (WITH UNLIMITED KEY FAILOVER)
+--AI MESSAGING WITH THE FUCK ASS ROLLOVER
 -- ═══════════════════════════════════════
 
 local function BuildSystemMsg(nearby)
@@ -1522,12 +1041,6 @@ local function BuildSystemMsg(nearby)
         "Your Roblox username: " .. LP.Name .. (LP.DisplayName ~= LP.Name and " (display: " .. LP.DisplayName .. ")" or ""),
         "Local operator: " .. BOT_OWNER .. ". You are SilentAI; be honest about that if asked.",
     }
-    if Cfg.StandEnabled then
-        table.insert(ctx, string.format("SilentStands ACTIVE: Stand '%s' (Cry: '%s', Position: %s, Stance: %s), bound to %s.", Cfg.StandName, Cfg.StandCry, Cfg.StandPosition, StandRig.stance, BOT_OWNER))
-        if Cfg.StandAI then
-            table.insert(ctx, "Act as a JoJo-style Stand entity supporting your user while keeping replies short and Roblox-appropriate.")
-        end
-    end
     if BotAction.mode ~= "none" then
         table.insert(ctx, "Current movement action: " .. BotAction.mode .. (BotAction.targetLabel ~= "" and (" -> " .. BotAction.targetLabel) or ""))
     end
@@ -1978,7 +1491,6 @@ local function ParseBoolArg(arg, currentVal)
     return not currentVal
 end
 
--- Executes "!" commands and "(botname) <command>"
 local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
     local isOwner = (sender == LP) or isLocalOwner
     if not isOwner and not Cfg.PublicCommands then return false end
@@ -1987,7 +1499,6 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
     local botPrefix = Trim(Cfg.BotName):lower()
     local body = cleaned
 
-    -- Strip optional "(botname) " prefix if present
     if botPrefix ~= "" and cleaned:sub(1, #botPrefix):lower() == botPrefix then
         local nextChar = cleaned:sub(#botPrefix + 1, #botPrefix + 1)
         if nextChar == "" or nextChar:match("[%s,:;!%.%-]") then
@@ -1995,7 +1506,6 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
             if afterName:sub(1, 1) == "!" then
                 body = afterName
             else
-                -- Legacy natural phrasing support
                 local lowerAfter = afterName:lower():gsub("[%.!%?]+$", "")
                 if lowerAfter == "come here" or lowerAfter == "come" then
                     body = "!come"
@@ -2003,14 +1513,8 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
                     body = "!follow"
                 elseif lowerAfter == "stop" then
                     body = "!stop"
-                elseif lowerAfter == "copy emote" or lowerAfter == "copy animation" then
-                    body = "!copyemote"
-                elseif lowerAfter == "summon" or lowerAfter == "stand" then
-                    body = "!summon"
-                elseif lowerAfter == "dismiss" or lowerAfter == "unsummon" then
-                    body = "!vanish"
-                elseif lowerAfter == "stand rush" or lowerAfter == "rush" or lowerAfter == "ora" then
-                    body = "!rush"
+                elseif lowerAfter == "stop emote" or lowerAfter == "stop animation" then
+                    body = "!stopanim"
                 else
                     local goTarget = afterName:match("^[Gg][Oo]%s+[Tt][Oo]%s+(.+)$")
                     if goTarget then
@@ -2031,28 +1535,6 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
     local arg = Trim(argPart)
     local lowerArg = arg:lower():gsub("[%.!%?]+$", "")
 
-    -- 1. !summon (aliases: !s)
-    if cmd == "summon" or cmd == "s" then
-        SetStandEnabled(true)
-        Cfg.StandPosition = "back"
-        Cfg.AutoFollow = false
-        ResetPathState()
-        BotAction.mode = "follow"
-        BotAction.targetPlayer = LP
-        BotAction.targetLabel = LP.DisplayName
-        SaveCfg()
-        SafeNotify({ Title = "SilentStands", Content = "Summoned " .. Cfg.StandName .. " and following owner!" })
-        return true
-    end
-
-    -- 2. !vanish (alias: !v)
-    if cmd == "vanish" or cmd == "v" then
-        SetStandEnabled(false)
-        SafeNotify({ Title = "SilentStands", Content = Cfg.StandName .. " vanished." })
-        return true
-    end
-
-    -- 3. !follow [player] (alias: !frame)
     if cmd == "follow" or cmd == "frame" then
         local targetPlayer = lowerArg ~= "" and FindPlayerByNameOrDisplay(lowerArg) or (sender or LP)
         if not targetPlayer then
@@ -2070,7 +1552,6 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
         return true
     end
 
-    -- 4. !come (helper for come here)
     if cmd == "come" or cmd == "comehere" then
         local hrp = sender and sender.Character and sender.Character:FindFirstChild("HumanoidRootPart")
         if not hrp then return true end
@@ -2088,7 +1569,6 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
         return true
     end
 
-    -- 5. !goto <player or workspace item>
     if cmd == "goto" or cmd == "go" then
         local targetQuery = Trim(arg:gsub("^[Tt][Oo]%s+", ""):gsub("[%.!%?]+$", ""))
         if targetQuery == "" then return true end
@@ -2128,24 +1608,21 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
         return true
     end
 
-    -- 6. !stop
     if cmd == "stop" then
         StopBotMovement(true)
         SafeNotify({ Title = "SilentAI", Content = "Stopped active movement and animations." })
         return true
     end
 
-    -- 7. !help (aliases: !cmds, !commands)
     if cmd == "help" or cmd == "cmds" or cmd == "commands" then
         SafeNotify({
-            Title = "SilentAI & SilentStands Commands",
-            Content = "!summon (!s), !vanish (!v), !follow [player] (!frame), !stop, !chatcmd, !weld [on|off], !multistand [on|off], !mutesound, !say <msg>\nPos: !back, !left, !right, !line, !x, !under, !alt, !orbit [speed]\nAnim: !fly <preset|id>, !emote <name|id>, !copyemote [player], !stopcopyemote, !stopanim, !text <msg|off>",
-            Duration = 12,
+            Title = "SilentAI Commands",
+            Content = "!follow [player] (!frame), !come, !goto <target>, !stop, !chatcmd, !say <msg>, !emote <name|id>, !stopanim",
+            Duration = 10,
         })
         return true
     end
 
-    -- 8. !chatcmd
     if cmd == "chatcmd" or cmd == "chatcmds" then
         Cfg.PublicCommands = ParseBoolArg(arg, Cfg.PublicCommands)
         SaveCfg()
@@ -2153,38 +1630,6 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
         return true
     end
 
-    -- 9. !weld [on|off] (aliases: !usewelding, !targetweld)
-    if cmd == "weld" or cmd == "usewelding" or cmd == "targetweld" then
-        Cfg.StandWeld = ParseBoolArg(arg, Cfg.StandWeld)
-        if not Cfg.StandEnabled then SetStandEnabled(true) end
-        local char = LP.Character
-        local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
-        SyncStandAttachment(root)
-        SaveCfg()
-        SafeNotify({ Title = "SilentStands Weld", Content = Cfg.StandWeld and "Welding ON" or "Welding OFF" })
-        return true
-    end
-
-    -- 10. !multistand [on|off] (aliases: !multi, !multipos, !multianim)
-    if cmd == "multistand" or cmd == "multi" or cmd == "multipos" or cmd == "multianim" then
-        Cfg.MultiStand = ParseBoolArg(arg, Cfg.MultiStand)
-        if Cfg.MultiStand and not Cfg.StandEnabled then SetStandEnabled(true) end
-        if not Cfg.MultiStand then ClearStandClones() end
-        SaveCfg()
-        SafeNotify({ Title = "Multi-Stand", Content = Cfg.MultiStand and "Multi-Stand ON" or "Multi-Stand OFF" })
-        return true
-    end
-
-    -- 11. !mutesound (aliases: !mute, !mutestand)
-    if cmd == "mutesound" or cmd == "mute" or cmd == "mutestand" then
-        Cfg.MuteStandSound = ParseBoolArg(arg, Cfg.MuteStandSound)
-        ApplyStandSoundMute()
-        SaveCfg()
-        SafeNotify({ Title = "Stand Sound", Content = Cfg.MuteStandSound and "Muted" or "Unmuted" })
-        return true
-    end
-
-    -- 12. !say <message> (alias: !chat)
     if cmd == "say" or cmd == "chat" then
         if arg == "" then
             SafeNotify({ Title = "Usage", Content = "!say <message>" })
@@ -2198,86 +1643,15 @@ local function TryExecuteChatCommand(sender, rawText, isLocalOwner)
         return true
     end
 
-    -- 13. Positions: !back, !left, !right, !line (!row, !lines), !x (!cross), !under, !alt, !orbit [speed]
-    local posMap = {
-        back = "back",
-        left = "left",
-        right = "right",
-        line = "line", row = "line", lines = "line",
-        x = "x", cross = "x",
-        under = "under",
-        alt = "alt",
-    }
-    if posMap[cmd] then
-        if not Cfg.StandEnabled then SetStandEnabled(true) end
-        Cfg.StandPosition = posMap[cmd]
-        SaveCfg()
-        SafeNotify({ Title = "SilentStands Position", Content = "Position set to: " .. Cfg.StandPosition })
-        return true
-    end
-    if cmd == "orbit" then
-        if not Cfg.StandEnabled then SetStandEnabled(true) end
-        local spd = tonumber(arg)
-        if spd then
-            Cfg.OrbitSpeed = math.clamp(spd, 0.5, 20)
-        end
-        Cfg.StandPosition = "orbit"
-        SaveCfg()
-        SafeNotify({ Title = "SilentStands Orbit", Content = string.format("Orbiting at speed %.1f", Cfg.OrbitSpeed) })
-        return true
-    end
-
-    -- 14. Rush helper
-    if cmd == "rush" or cmd == "ora" then
-        TriggerStandRush(2.4)
-        SafeNotify({ Title = Cfg.StandName, Content = Cfg.StandCry })
-        return true
-    end
-
-    -- 15. !fly <preset|animation-id> (aliases: !anim, !animation)
-    if cmd == "fly" or cmd == "anim" or cmd == "animation" then
-        local ok, msg = PlayFlyPreset(arg ~= "" and arg or "hover")
-        SafeNotify({ Title = "SilentStands Fly/Anim", Content = msg })
-        return true
-    end
-
-    -- 16. !emote <name|animation-id>
     if cmd == "emote" then
-        local ok, msg = PlayEmote(arg ~= "" and arg or "wave")
-        SafeNotify({ Title = "Emote", Content = msg })
+        local ok = PlayEmote(arg ~= "" and arg or "wave")
+        SafeNotify({ Title = "Emote", Content = ok and ("Playing emote: " .. (arg ~= "" and arg or "wave")) or "Could not play emote." })
         return true
     end
 
-    -- 17. !copyemote [player] (aliases: !copyanim, !mirroremote)
-    if cmd == "copyemote" or cmd == "copyanim" or cmd == "mirroremote" then
-        local targetPlayer = lowerArg ~= "" and FindPlayerByNameOrDisplay(lowerArg) or (sender or LP)
-        if not targetPlayer then
-            SafeNotify({ Title = "Copy Emote", Content = "Player '" .. arg .. "' not found." })
-            return true
-        end
-        local ok, msg = CopyPlayerEmote(targetPlayer)
-        SafeNotify({ Title = ok and "Copied Emote" or "Copy Emote", Content = msg })
-        return true
-    end
-
-    -- 18. !stopcopyemote (alias: !stopmirror)
-    if cmd == "stopcopyemote" or cmd == "stopmirror" then
-        StopCopiedEmote()
-        SafeNotify({ Title = "SilentStands", Content = "Stopped copied emote." })
-        return true
-    end
-
-    -- 19. !stopanim (alias: !resetanim)
     if cmd == "stopanim" or cmd == "resetanim" then
-        StopAllAnimations()
-        SafeNotify({ Title = "SilentStands", Content = "Reset active animations." })
-        return true
-    end
-
-    -- 20. !text <message> / !text off / !text clear
-    if cmd == "text" then
-        local ok, msg = SetStandText(arg)
-        SafeNotify({ Title = "SilentStands Text", Content = msg })
+        StopEmote()
+        SafeNotify({ Title = "SilentAI", Content = "Stopped active emote." })
         return true
     end
 
@@ -2294,20 +1668,6 @@ local function HandleSlashCommand(text)
     elseif cmd == "stop" then
         StopBotMovement(true)
         SafeNotify({ Title = "Stopped", Content = "Movement and emote stopped." })
-        return true
-    elseif cmd == "stand" then
-        local arg = argument:lower()
-        if arg == "on" then SetStandEnabled(true)
-        elseif arg == "off" then SetStandEnabled(false)
-        else SetStandEnabled(not Cfg.StandEnabled) end
-        SafeNotify({ Title = "SilentStands", Content = Cfg.StandEnabled and (Cfg.StandName .. " active") or "Stand dismissed" })
-        return true
-    elseif cmd == "rush" then
-        TriggerStandRush(2.4)
-        SafeNotify({ Title = Cfg.StandName, Content = Cfg.StandCry })
-        return true
-    elseif cmd == "cry" then
-        QueueManual({ text = "Shout your Stand cry (" .. Cfg.StandCry .. ") dramatically in character.", name = LP.Name })
         return true
     elseif cmd == "follow" then
         local arg = argument:lower()
@@ -2333,11 +1693,11 @@ local function HandleSlashCommand(text)
     elseif cmd == "status" then
         SafeNotify({
             Title = "SilentAI status",
-            Content = string.format("Groq (%d keys, #%d active) | %s\nAction: %s | Stand: %s | Queue: %d", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, Cfg.StandEnabled and "ON" or "OFF", #MsgQueue),
+            Content = string.format("Groq (%d keys, #%d active) | %s\nAction: %s | Queue: %d", #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode, #MsgQueue),
         })
         return true
     else
-        SafeNotify({ Title = "Commands", Content = "/ai on, off, stop, stand [on|off], rush, cry, follow [on|off], vc, keys, clear, model MODEL_ID, status" })
+        SafeNotify({ Title = "Commands", Content = "/ai on, off, stop, follow [on|off], vc, keys, clear, model MODEL_ID, status" })
         return true
     end
     SafeNotify({ Title = "SilentAI", Content = "Command applied: " .. cmd })
@@ -2511,7 +1871,7 @@ end)
 table.insert(Runtime.cleanups, function()
     table.clear(MsgQueue)
     DestroyBillboard()
-    StopAllAnimations()
+    StopEmote()
 end)
 
 -- ═══════════════════════════════════════
@@ -2961,7 +2321,7 @@ end
 if not setupAlreadyDone then RunSetupWizard() end
 
 -- ═══════════════════════════════════════
--- RAYFIELD GEN2 PANEL (SILENTAI & SILENTSTANDS)
+-- RAYFIELD GEN2 PANEL (SILENTAI & SILENT STANDS)
 -- ═══════════════════════════════════════
 
 if not Runtime.alive then return end
@@ -3013,9 +2373,9 @@ Runtime.ready = true
 
 local function SessionSummary()
     local stats = Runtime.stats
-    return string.format("SilentAI · Groq (%d keys · #%d) · %s\n%s · Action: %s · SilentStands: %s · Replies %d",
+    return string.format("SilentAI · Groq (%d keys · #%d) · %s\n%s · Action: %s · Replies %d",
         #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, Cfg.Enabled and "Replying" or "Paused",
-        BotAction.mode, Cfg.StandEnabled and "ON" or "OFF", stats.replies)
+        BotAction.mode, stats.replies)
 end
 
 -- ─── Home ───
@@ -3041,9 +2401,8 @@ TabHome:CreateButton({
         SafeNotify({
             Title = "SilentAI Session Status",
             Content = string.format(
-                "Provider: Groq (%d keys, #%d active)\nModel: %s | Action: %s\nSilentStands: %s (%s)\nRequests: %d | Replies: %d | Errors: %d",
+                "Provider: Groq (%d keys, #%d active)\nModel: %s | Action: %s\nRequests: %d | Replies: %d | Errors: %d",
                 #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.Model, BotAction.mode,
-                Cfg.StandEnabled and "Active" or "Off", Cfg.StandName,
                 stats.requests, stats.replies, stats.errors
             ),
             Duration = 12,
@@ -3098,11 +2457,11 @@ TabHome:CreateButton({
 })
 TabHome:CreateButton({ name = "Introduce SilentAI in chat", callback = function() task.spawn(DoIntroduce) end })
 TabHome:CreateButton({
-    name = "Stop active movement / animations",
+    name = "Stop active movement / emote",
     callback = function()
         StopBotMovement(true)
         if statusText then statusText:Set(SessionSummary()) end
-        SafeNotify({ Title = "Stopped", Content = "Stopped active movement and animations." })
+        SafeNotify({ Title = "Stopped", Content = "Stopped active movement and emote." })
     end,
 })
 TabHome:CreateButton({
@@ -3168,124 +2527,124 @@ TabHome:CreateButton({
     end,
 })
 
--- ─── SilentStands ───
-local TabStand = Win:CreateTab({ name = "SilentStands" })
-TabStand:CreateSection({ name = "SilentStands manifestation (Motor6D & Weld)" })
-TabStand:CreateToggle({
-    name = "Summon / Manifest SilentStands",
-    value = Cfg.StandEnabled,
-    callback = function(v)
-        SetStandEnabled(v)
-        if statusText then statusText:Set(SessionSummary()) end
-        SafeNotify({ Title = "SilentStands", Content = v and (Cfg.StandName .. " manifested") or "SilentStands vanished" })
-    end,
-    forgetState = true,
-})
+-- ─── Silent Stands (SocietyStand) ───
+local TabStand = Win:CreateTab({ name = "Silent Stands" })
+TabStand:CreateSection({ name = "getgenv().Credits" })
 TabStand:CreateInput({
-    name = "Stand Name",
-    placeholder = "SilentStands",
-    value = Cfg.StandName,
+    name = "Credits",
+    placeholder = "getgenv().Credits",
+    value = SocietyStandCfg.Credits,
     callback = function(v)
-        Cfg.StandName = Trim(v) ~= "" and Trim(v) or "SilentStands"
-        SaveCfg()
-    end,
-    forgetState = true,
-})
-TabStand:CreateInput({
-    name = "Stand Cry",
-    placeholder = "ORA ORA ORA!",
-    value = Cfg.StandCry,
-    callback = function(v)
-        Cfg.StandCry = Trim(v) ~= "" and Trim(v) or "ORA ORA ORA!"
-        SaveCfg()
-    end,
-    forgetState = true,
-})
-TabStand:CreateToggle({
-    name = "Use welding (!weld)",
-    value = Cfg.StandWeld,
-    callback = function(v)
-        Cfg.StandWeld = v
-        local char = LP.Character
-        local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
-        SyncStandAttachment(root)
-        SaveCfg()
-    end,
-    forgetState = true,
-})
-TabStand:CreateToggle({
-    name = "Multi-Stand formation (!multistand)",
-    value = Cfg.MultiStand,
-    callback = function(v)
-        Cfg.MultiStand = v
-        if not v then ClearStandClones() end
-        SaveCfg()
-    end,
-    forgetState = true,
-})
-TabStand:CreateToggle({
-    name = "Mute Stand sound (!mutesound)",
-    value = Cfg.MuteStandSound,
-    callback = function(v)
-        Cfg.MuteStandSound = v
-        ApplyStandSoundMute()
-        SaveCfg()
-    end,
-    forgetState = true,
-})
-TabStand:CreateToggle({
-    name = "Stand AI persona context",
-    value = Cfg.StandAI,
-    callback = function(v)
-        Cfg.StandAI = v
-        SaveCfg()
+        SocietyStandCfg.Credits = tostring(v or "")
     end,
     forgetState = true,
 })
 
-TabStand:CreateSection({ name = "SilentStands actions & text" })
-TabStand:CreateButton({
-    name = "Stand Rush (ORA ORA ORA!)",
-    callback = function()
-        TriggerStandRush(2.4)
-        SafeNotify({ Title = Cfg.StandName, Content = Cfg.StandCry })
-    end,
-})
-TabStand:CreateButton({
-    name = "Stand Cry & Talk (AI)",
-    callback = function()
-        TriggerStandRush(1.8)
-        QueueManual({
-            text = "Shout your Stand cry (" .. Cfg.StandCry .. ") and deliver a short dramatic Stand line.",
-            name = LP.Name,
-            userId = LP.UserId,
-        })
-    end,
-})
-local standTextInput = ""
+TabStand:CreateSection({ name = "getgenv().SocietyStand.Main" })
 TabStand:CreateInput({
-    name = "Stand 3D Text (!text)",
-    placeholder = "Type message or 'off'",
-    callback = function(v) standTextInput = v end,
+    name = "Owner",
+    placeholder = "username",
+    value = SocietyStandCfg.Main.Owner,
+    callback = function(v)
+        SocietyStandCfg.Main.Owner = Trim(v)
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "CustomName",
+    placeholder = "Master",
+    value = SocietyStandCfg.Main.CustomName,
+    callback = function(v)
+        SocietyStandCfg.Main.CustomName = Trim(v)
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "CustomPrefix",
+    placeholder = "!",
+    value = SocietyStandCfg.Main.CustomPrefix,
+    callback = function(v)
+        SocietyStandCfg.Main.CustomPrefix = tostring(v or "!")
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "PrefixAT",
+    placeholder = "Before",
+    value = SocietyStandCfg.Main.PrefixAT,
+    callback = function(v)
+        SocietyStandCfg.Main.PrefixAT = Trim(v)
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "Position",
+    placeholder = "Back",
+    value = SocietyStandCfg.Main.Position,
+    callback = function(v)
+        SocietyStandCfg.Main.Position = Trim(v)
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "CustomSummon",
+    placeholder = "s",
+    value = SocietyStandCfg.Main.CustomSummon,
+    callback = function(v)
+        SocietyStandCfg.Main.CustomSummon = Trim(v)
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "FlyAnim",
+    placeholder = "fly3",
+    value = SocietyStandCfg.Main.FlyAnim,
+    callback = function(v)
+        SocietyStandCfg.Main.FlyAnim = Trim(v)
+    end,
+    forgetState = true,
+})
+TabStand:CreateToggle({
+    name = "ChatCommands",
+    value = SocietyStandCfg.Main.ChatCommands,
+    callback = function(v)
+        SocietyStandCfg.Main.ChatCommands = v
+    end,
+    forgetState = true,
+})
+TabStand:CreateToggle({
+    name = "UseWelding",
+    value = SocietyStandCfg.Main.UseWelding,
+    callback = function(v)
+        SocietyStandCfg.Main.UseWelding = v
+    end,
+    forgetState = true,
+})
+TabStand:CreateInput({
+    name = "Password",
+    placeholder = "changeme",
+    value = SocietyStandCfg.Main.Password,
+    callback = function(v)
+        SocietyStandCfg.Main.Password = tostring(v or "")
+    end,
+    forgetState = true,
+})
+
+TabStand:CreateSection({ name = "Execute SocietyStand" })
+TabStand:CreateInput({
+    name = "Script URL",
+    placeholder = "https://raw.githubusercontent.com/Xehh0/V4/refs/heads/main/init.luau",
+    value = SocietyStandCfg.ScriptUrl,
+    callback = function(v)
+        SocietyStandCfg.ScriptUrl = Trim(v)
+    end,
     forgetState = true,
 })
 TabStand:CreateButton({
-    name = "Display / Update Stand Text",
+    name = "Apply getgenv & Execute SocietyStand",
     callback = function()
-        local _, msg = SetStandText(standTextInput)
-        SafeNotify({ Title = "SilentStands Text", Content = msg })
+        ApplyAndExecuteSocietyStand()
     end,
-})
-TabStand:CreateButton({
-    name = "Clear Stand Text",
-    callback = function()
-        ClearStandText()
-        SafeNotify({ Title = "SilentStands Text", Content = "Cleared Stand text." })
-    end,
-})
-TabStand:CreateText({
-    name = "Command reference",
-    text = "!summon (!s) • !vanish (!v) • !follow [player] (!frame) • !stop • !help (!cmds)\n!chatcmd • !weld • !multistand • !mutesound • !say <msg>\n!back • !left • !right • !line • !x • !under • !alt • !orbit [speed]\n!fly <preset|id> • !emote <name|id> • !copyemote [player] • !stopcopyemote • !stopanim • !text <msg|off>",
 })
 
 -- ─── Personality ───
@@ -3385,7 +2744,7 @@ TabReplies:CreateToggle({
 })
 TabReplies:CreateText({
     name = "Public command syntax",
-    text = "!summon (!s) • !vanish (!v) • !follow [player] (!frame) • !stop • !help\n!back, !left, !right, !line, !x, !under, !alt, !orbit [speed]\n!fly <preset|id>, !emote <name|id>, !copyemote [player], !stopcopyemote, !stopanim, !text <msg|off>",
+    text = "!follow [player] (!frame), !come, !goto <target>, !stop, !chatcmd, !say <msg>, !emote <name|id>, !stopanim",
 })
 
 TabReplies:CreateSection({ name = "Who it replies to" })
@@ -3647,7 +3006,7 @@ TabSettings:CreateSlider({ name = "Request timeout (seconds)", increment = 5, ra
 TabSettings:CreateSection({ name = "Help & unload" })
 TabSettings:CreateText({
     name = "Commands & shortcuts",
-    text = "!summon (!s) • !vanish (!v) • !follow (!frame) • !stop • !help (!cmds)\n!chatcmd • !weld • !multistand • !mutesound • !say • !orbit • !fly • !emote • !copyemote • !text\nK toggles the control panel.",
+    text = "!follow (!frame) • !come • !goto <target> • !stop • !chatcmd • !say <msg> • !emote • !stopanim\nK toggles the control panel.",
 })
 TabSettings:CreateButton({
     name = "Save Settings Now",
@@ -3670,21 +3029,14 @@ TabSettings:CreateButton({
 -- INIT
 -- ═══════════════════════════════════════
 
-if Cfg.StandEnabled then
-    task.spawn(function()
-        task.wait(0.4)
-        if Runtime.alive and Cfg.StandEnabled then BuildStandRig() end
-    end)
-end
-
 UpdateBillboard(Cfg.Enabled and "ready" or "paused")
 
 task.spawn(function()
     task.wait(1.5)
     SafeNotify({
         Title = "SilentAI v" .. VERSION .. " Ready",
-        Content = string.format("Bot: %s | Model: %s\nGroq Keys: %d (#%d active) | SilentStands: %s",
-            Cfg.BotName, Cfg.Model, #Cfg.GroqKeys, Cfg.ActiveKeyIndex, Cfg.StandEnabled and "ON" or "OFF"),
+        Content = string.format("Bot: %s | Model: %s\nGroq Keys: %d (#%d active)",
+            Cfg.BotName, Cfg.Model, #Cfg.GroqKeys, Cfg.ActiveKeyIndex),
         Duration = 6,
     })
 end)
